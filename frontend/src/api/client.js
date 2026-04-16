@@ -39,3 +39,63 @@ export async function resetSimulation() {
     })
   );
 }
+
+export async function startGame(difficulty = "MEDIUM") {
+  return handleResponse(
+    await fetch(`${API_BASE}/simulation/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ difficulty })
+    })
+  );
+}
+
+export async function resolveAlert(id) {
+  return handleResponse(
+    await fetch(`${API_BASE}/alerts/${id}/resolve`, {
+      method: "POST"
+    })
+  );
+}
+
+export async function blockIP(ip) {
+  return handleResponse(
+    await fetch(`${API_BASE}/actions/block-ip`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip })
+    })
+  );
+}
+
+export async function isolateHost(hostId) {
+  return handleResponse(
+    await fetch(`${API_BASE}/actions/isolate-host`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostId })
+    })
+  );
+}
+
+export async function killProcess(pid) {
+  return handleResponse(
+    await fetch(`${API_BASE}/actions/kill-process`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pid })
+    })
+  );
+}
+
+export async function removeCron() {
+  return handleResponse(
+    await fetch(`${API_BASE}/actions/remove-cron`, {
+      method: "POST"
+    })
+  );
+}
+
+export async function getAvailableActions() {
+  return handleResponse(await fetch(`${API_BASE}/actions/available`));
+}

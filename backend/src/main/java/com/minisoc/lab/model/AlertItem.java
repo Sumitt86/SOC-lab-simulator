@@ -7,6 +7,7 @@ public record AlertItem(
         String detail,
         String mitreTag,
         String timestamp,
-        boolean open
+        boolean open,
+        String host
 ) {
 }

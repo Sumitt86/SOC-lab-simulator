@@ -1,0 +1,78 @@
+# ==================== JAVA / MAVEN ====================
+target/
+*.jar
+*.war
+*.ear
+*.class
+.classpath
+.project
+.settings/
+*.iml
+*.iws
+*.ipr
+.idea/
+
+# ==================== NODE / NPM ====================
+node_modules/
+npm-debug.log
+npm-error.log
+package-lock.json
+yarn.lock
+dist/
+build/
+.vite/
+
+# ==================== ENVIRONMENT & SECRETS ====================
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+.ssh/
+soc_lab_key
+soc_lab_key.pub
+
+# ==================== DOCKER ====================
+.dockerignore
+docker-compose.override.yml
+.docker/
+
+# ==================== IDE & EDITOR ====================
+.vscode/
+.vs/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# ==================== OS ====================
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ==================== PYTHON ====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==================== LOGS ====================
+logs/
+*.log
+*.out
+
+# ==================== MISC ====================
+.cache/
+.temp/
+tmp/
+temp/
+.gradle/
