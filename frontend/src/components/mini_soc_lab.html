@@ -1,0 +1,2106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SOC vs Adversary Lab — REME Project</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap');
+
+:root {
+  --bg:        #050810;
+  --bg2:       #080d1a;
+  --bg3:       #0c1224;
+  --panel:     #0f1830;
+  --panel2:    #111f38;
+  --border:    #1a2d50;
+  --red:       #ff2244;
+  --red2:      #cc1133;
+  --red-dim:   #3d0a14;
+  --blue:      #00c8ff;
+  --blue2:     #0090cc;
+  --blue-dim:  #002840;
+  --green:     #00ff88;
+  --green2:    #00cc66;
+  --green-dim: #003322;
+  --amber:     #ffaa00;
+  --amber-dim: #332200;
+  --white:     #e8f0ff;
+  --muted:     #4a6080;
+  --scanline: rgba(0,200,255,0.03);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* ── SCANLINE OVERLAY ── */
+body::before {
+  content:'';
+  position:fixed; inset:0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scanline) 2px, var(--scanline) 4px);
+  pointer-events:none; z-index:9999;
+  animation: scanroll 8s linear infinite;
+}
+@keyframes scanroll { from{background-position:0 0} to{background-position:0 100px} }
+
+/* ── GRID BG ── */
+body::after {
+  content:'';
+  position:fixed; inset:0;
+  background-image:
+    linear-gradient(rgba(0,200,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,200,255,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events:none; z-index:0;
+}
+
+/* ── NAVBAR ── */
+nav {
+  position: sticky; top:0; z-index: 1000;
+  background: rgba(5,8,16,0.95);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 56px;
+}
+.nav-logo {
+  font-family: 'Orbitron', monospace;
+  font-weight: 900; font-size: 1rem;
+  color: var(--blue);
+  letter-spacing: 2px;
+  text-shadow: 0 0 20px var(--blue);
+}
+.nav-logo span { color: var(--red); }
+.nav-links { display:flex; gap:0.25rem; }
+.nav-links a {
+  font-family:'Share Tech Mono'; font-size:0.75rem;
+  color: var(--muted); text-decoration:none;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  transition: all 0.2s;
+  letter-spacing:1px;
+}
+.nav-links a:hover { color: var(--blue); border-color: var(--blue); background: rgba(0,200,255,0.05); }
+.nav-links a.active { color: var(--blue); border-color: var(--blue); background: rgba(0,200,255,0.08); }
+.nav-status {
+  display:flex; align-items:center; gap:0.5rem;
+  font-family:'Share Tech Mono'; font-size:0.7rem; color: var(--green);
+}
+.pulse { width:8px;height:8px;border-radius:50%;background:var(--green);
+  animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,0.7)} 50%{box-shadow:0 0 0 6px rgba(0,255,136,0)} }
+
+/* ── HERO ── */
+.hero {
+  position: relative; z-index:1;
+  min-height: 100vh;
+  display: flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; padding: 4rem 2rem;
+  overflow:hidden;
+}
+.hero-glow {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:800px; height:800px;
+  background: radial-gradient(circle, rgba(0,200,255,0.06) 0%, transparent 70%);
+  pointer-events:none;
+}
+.hero-glow-red {
+  position:absolute; top:40%; left:30%;
+  width:400px; height:400px;
+  background: radial-gradient(circle, rgba(255,34,68,0.05) 0%, transparent 70%);
+  pointer-events:none;
+}
+.hero-tag {
+  font-family:'Share Tech Mono'; font-size:0.7rem; letter-spacing:4px;
+  color: var(--blue); margin-bottom:1.5rem;
+  padding: 0.4rem 1.2rem;
+  border: 1px solid rgba(0,200,255,0.3);
+  border-radius: 2px;
+  background: rgba(0,200,255,0.04);
+  animation: fadeInDown 0.8s ease both;
+}
+.hero h1 {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(2rem, 6vw, 4.5rem);
+  font-weight: 900; line-height:1.1;
+  margin-bottom: 1.5rem;
+  animation: fadeInUp 0.9s ease 0.2s both;
+}
+.hero h1 .red { color: var(--red); text-shadow: 0 0 30px var(--red); }
+.hero h1 .blue { color: var(--blue); text-shadow: 0 0 30px var(--blue); }
+.hero-sub {
+  font-size:1.1rem; color: var(--muted); max-width:620px;
+  margin-bottom: 2.5rem; font-weight:300; letter-spacing:0.5px;
+  animation: fadeInUp 0.9s ease 0.4s both;
+}
+.hero-badges {
+  display:flex; gap:1rem; flex-wrap:wrap; justify-content:center;
+  margin-bottom: 3rem;
+  animation: fadeInUp 0.9s ease 0.5s both;
+}
+.badge {
+  padding: 0.5rem 1.2rem;
+  font-family:'Share Tech Mono'; font-size:0.75rem; letter-spacing:1px;
+  border-radius: 2px; border: 1px solid;
+}
+.badge-red { border-color:var(--red); color:var(--red); background:var(--red-dim); }
+.badge-blue { border-color:var(--blue); color:var(--blue); background:var(--blue-dim); }
+.badge-green { border-color:var(--green); color:var(--green); background:var(--green-dim); }
+.badge-amber { border-color:var(--amber); color:var(--amber); background:var(--amber-dim); }
+
+.hero-scroll {
+  font-family:'Share Tech Mono'; font-size:0.7rem; color:var(--muted);
+  letter-spacing:2px; animation: bounce 2s ease-in-out infinite;
+}
+@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(6px)} }
+@keyframes fadeInDown { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeInUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── SECTIONS ── */
+section {
+  position:relative; z-index:1;
+  padding: 5rem 2rem;
+  max-width: 1280px; margin: 0 auto;
+}
+.section-label {
+  font-family:'Share Tech Mono'; font-size:0.7rem; letter-spacing:4px;
+  color: var(--blue); margin-bottom:0.75rem;
+  display: flex; align-items:center; gap:0.75rem;
+}
+.section-label::before {
+  content:''; display:block; width:24px; height:1px; background:var(--blue);
+}
+h2 {
+  font-family:'Orbitron', monospace; font-size: clamp(1.4rem,3vw,2rem);
+  font-weight:700; margin-bottom:0.75rem; color:var(--white);
+}
+.section-desc { color:var(--muted); max-width:640px; margin-bottom:3rem; font-size:1rem; }
+
+/* ── FULL-WIDTH SECTION ── */
+.full-section {
+  position:relative; z-index:1;
+  padding: 5rem 2rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.full-section-inner { max-width:1280px; margin:0 auto; }
+
+/* ── BLUEPRINT DIAGRAM ── */
+.blueprint-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2.5rem;
+  position:relative; overflow:hidden;
+}
+.blueprint-wrap::before {
+  content:'ARCHITECTURE v1.0';
+  position:absolute; top:1rem; right:1.5rem;
+  font-family:'Share Tech Mono'; font-size:0.65rem; color:var(--muted);
+}
+.arch-grid {
+  display: grid;
+  grid-template-columns: 1fr 80px 1fr;
+  gap: 0;
+  align-items: stretch;
+}
+.arch-col {
+  display: flex; flex-direction:column; gap:1rem;
+}
+.arch-middle {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:1.5rem; padding: 1rem 0;
+}
+.arch-box {
+  border: 1px solid; border-radius:3px;
+  padding: 1rem 1.2rem;
+  font-size:0.85rem;
+  position:relative;
+}
+.arch-box.red { border-color:var(--red); background: rgba(255,34,68,0.05); }
+.arch-box.blue { border-color:var(--blue); background: rgba(0,200,255,0.05); }
+.arch-box.shared { border-color:var(--amber); background: rgba(255,170,0,0.05); }
+.arch-box-title {
+  font-family:'Share Tech Mono'; font-size:0.7rem; letter-spacing:2px;
+  margin-bottom:0.5rem;
+}
+.arch-box.red .arch-box-title { color:var(--red); }
+.arch-box.blue .arch-box-title { color:var(--blue); }
+.arch-box.shared .arch-box-title { color:var(--amber); }
+.arch-box ul { list-style:none; }
+.arch-box ul li {
+  padding: 0.2rem 0;
+  font-size:0.82rem; color:var(--muted);
+  display:flex; align-items:center; gap:0.5rem;
+}
+.arch-box ul li::before { content:'›'; font-size:1rem; }
+.arch-box.red ul li::before { color:var(--red); }
+.arch-box.blue ul li::before { color:var(--blue); }
+.arch-box.shared ul li::before { color:var(--amber); }
+
+.arch-arrow {
+  display:flex; flex-direction:column; align-items:center; gap:0.25rem;
+  font-family:'Share Tech Mono'; font-size:0.55rem; color:var(--muted);
+  text-align:center;
+}
+.arch-arrow-line {
+  width:2px; height:40px;
+  background: linear-gradient(to bottom, var(--red), var(--blue));
+}
+.arch-arrow-text { letter-spacing:1px; }
+
+.col-header {
+  font-family:'Orbitron'; font-weight:700; font-size:0.85rem;
+  padding: 0.6rem 1rem; border-radius:2px; text-align:center;
+  margin-bottom:0.5rem; letter-spacing:2px;
+}
+.col-header.red { background:var(--red-dim); color:var(--red); border:1px solid var(--red); }
+.col-header.blue { background:var(--blue-dim); color:var(--blue); border:1px solid var(--blue); }
+
+/* ── TWO TEAM CARDS ── */
+.team-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+@media(max-width:768px) { .team-grid { grid-template-columns:1fr; } }
+
+.team-card {
+  border: 1px solid; border-radius: 4px;
+  overflow:hidden;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.team-card:hover {
+  transform: translateY(-4px);
+}
+.team-card.red { border-color: var(--red); box-shadow: 0 0 30px rgba(255,34,68,0.1); }
+.team-card.red:hover { box-shadow: 0 8px 40px rgba(255,34,68,0.2); }
+.team-card.blue { border-color: var(--blue); box-shadow: 0 0 30px rgba(0,200,255,0.1); }
+.team-card.blue:hover { box-shadow: 0 8px 40px rgba(0,200,255,0.2); }
+
+.team-card-header {
+  padding: 1.5rem;
+  display:flex; align-items:center; gap:1rem;
+}
+.team-card.red .team-card-header { background: linear-gradient(135deg, var(--red-dim), rgba(255,34,68,0.03)); }
+.team-card.blue .team-card-header { background: linear-gradient(135deg, var(--blue-dim), rgba(0,200,255,0.03)); }
+
+.team-icon {
+  font-size: 2.5rem; line-height:1;
+}
+.team-card-title {
+  font-family:'Orbitron'; font-weight:700; font-size:1.1rem; letter-spacing:2px;
+}
+.team-card.red .team-card-title { color: var(--red); }
+.team-card.blue .team-card-title { color: var(--blue); }
+.team-card-sub { font-family:'Share Tech Mono'; font-size:0.7rem; color:var(--muted); letter-spacing:1px; }
+.team-card-body { padding: 1.5rem; background: var(--panel); }
+
+.member-slot {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius:2px; margin-bottom:0.75rem;
+  display:flex; align-items:center; gap:0.75rem;
+  font-size:0.85rem;
+}
+.member-num {
+  font-family:'Share Tech Mono'; font-size:0.65rem;
+  width:22px; height:22px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.team-card.red .member-num { background:var(--red-dim); color:var(--red); border:1px solid var(--red); }
+.team-card.blue .member-num { background:var(--blue-dim); color:var(--blue); border:1px solid var(--blue); }
+.member-role { font-weight:600; color:var(--white); }
+.member-resp { color:var(--muted); font-size:0.8rem; }
+
+.team-tools {
+  margin-top:1rem; padding-top:1rem;
+  border-top: 1px solid var(--border);
+}
+.tools-label { font-family:'Share Tech Mono'; font-size:0.65rem; letter-spacing:2px; color:var(--muted); margin-bottom:0.5rem; }
+.tools-list { display:flex; flex-wrap:wrap; gap:0.4rem; }
+.tool-tag {
+  font-family:'Share Tech Mono'; font-size:0.65rem; letter-spacing:1px;
+  padding: 0.25rem 0.6rem; border-radius:2px; border:1px solid;
+}
+.team-card.red .tool-tag { border-color:rgba(255,34,68,0.4); color:var(--red); background:var(--red-dim); }
+.team-card.blue .tool-tag { border-color:rgba(0,200,255,0.4); color:var(--blue); background:var(--blue-dim); }
+
+/* ── TODO LISTS ── */
+.todo-columns { display:grid; grid-template-columns:1fr 1fr; gap:2rem; }
+@media(max-width:768px) { .todo-columns { grid-template-columns:1fr; } }
+
+.todo-col { display:flex; flex-direction:column; gap:1.25rem; }
+.todo-phase {
+  border: 1px solid var(--border);
+  border-radius:3px; overflow:hidden;
+  background: var(--panel);
+}
+.todo-phase-header {
+  padding: 0.75rem 1.2rem;
+  display:flex; align-items:center; justify-content:space-between;
+  cursor: pointer;
+  user-select:none;
+  transition: background 0.2s;
+}
+.todo-phase-header:hover { background: rgba(255,255,255,0.02); }
+.todo-phase-title {
+  font-family:'Share Tech Mono'; font-size:0.75rem; letter-spacing:2px;
+  display:flex; align-items:center; gap:0.6rem;
+}
+.phase-num {
+  width:20px; height:20px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:0.65rem;
+}
+.todo-col.red-col .phase-num { background:var(--red-dim); color:var(--red); border:1px solid var(--red); }
+.todo-col.blue-col .phase-num { background:var(--blue-dim); color:var(--blue); border:1px solid var(--blue); }
+.todo-col.red-col .todo-phase-title { color:var(--red); }
+.todo-col.blue-col .todo-phase-title { color:var(--blue); }
+.phase-toggle { font-size:0.8rem; color:var(--muted); transition:transform 0.2s; }
+.phase-toggle.open { transform:rotate(180deg); }
+
+.todo-items { padding: 0.75rem 1.2rem 1rem; border-top:1px solid var(--border); }
+.todo-item {
+  display:flex; align-items:flex-start; gap:0.75rem;
+  padding: 0.5rem 0;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius:2px; padding-left:0.25rem;
+}
+.todo-item:last-child { border-bottom:none; }
+.todo-item:hover { background:rgba(255,255,255,0.02); }
+.todo-cb {
+  width:16px; height:16px; border-radius:2px; border:1px solid var(--border);
+  flex-shrink:0; margin-top:2px;
+  display:flex; align-items:center; justify-content:center;
+  transition: all 0.2s;
+}
+.todo-col.red-col .todo-cb.done { background:var(--red); border-color:var(--red); }
+.todo-col.blue-col .todo-cb.done { background:var(--blue); border-color:var(--blue); }
+.todo-cb.done::after { content:'✓'; font-size:0.6rem; color:#fff; }
+.todo-text { flex:1; font-size:0.85rem; color:var(--white); }
+.todo-text.done { text-decoration:line-through; color:var(--muted); }
+.todo-priority {
+  font-family:'Share Tech Mono'; font-size:0.6rem; padding:0.15rem 0.4rem;
+  border-radius:2px; flex-shrink:0; margin-top:2px;
+}
+.p-high { background:rgba(255,34,68,0.2); color:var(--red); border:1px solid rgba(255,34,68,0.3); }
+.p-med  { background:rgba(255,170,0,0.2); color:var(--amber); border:1px solid rgba(255,170,0,0.3); }
+.p-low  { background:rgba(0,255,136,0.1); color:var(--green); border:1px solid rgba(0,255,136,0.2); }
+
+.progress-bar-wrap { margin-top:0.5rem; }
+.progress-label { font-family:'Share Tech Mono'; font-size:0.6rem; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:4px; }
+.progress-track {
+  height:4px; border-radius:2px; background:var(--border);
+  overflow:hidden;
+}
+.progress-fill {
+  height:100%; border-radius:2px; transition:width 0.5s ease;
+}
+.todo-col.red-col .progress-fill { background: linear-gradient(90deg,var(--red2),var(--red)); }
+.todo-col.blue-col .progress-fill { background: linear-gradient(90deg,var(--blue2),var(--blue)); }
+
+/* ── LIVE TERMINAL ── */
+.terminal-wrap {
+  background: #020509;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow:hidden;
+  font-family:'Share Tech Mono';
+}
+.terminal-bar {
+  padding: 0.6rem 1rem;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--border);
+  display:flex; align-items:center; gap:0.5rem;
+}
+.t-dot { width:10px;height:10px;border-radius:50%; }
+.t-dot.r{background:#ff5f56} .t-dot.y{background:#ffbd2e} .t-dot.g{background:#27c93f}
+.t-title { margin-left:0.5rem; font-size:0.7rem; color:var(--muted); letter-spacing:2px; }
+.terminal-body {
+  padding: 1.2rem;
+  height: 280px; overflow-y:auto;
+  font-size: 0.78rem; line-height:1.7;
+}
+.terminal-body::-webkit-scrollbar { width:4px; }
+.terminal-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+.t-line { display:block; margin-bottom:0.1rem; }
+.t-prompt { color:var(--green); }
+.t-cmd { color:var(--white); }
+.t-out { color:var(--muted); }
+.t-warn { color:var(--amber); }
+.t-alert { color:var(--red); font-weight:bold; }
+.t-info { color:var(--blue); }
+.t-cursor { animation: blink 1s step-end infinite; }
+@keyframes blink { 50%{opacity:0} }
+
+/* ── LIVE DASHBOARD SECTION ── */
+.dashboard-grid {
+  display:grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+@media(max-width:900px) { .dashboard-grid { grid-template-columns:repeat(2,1fr); } }
+
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius:3px; padding:1.2rem;
+  position:relative; overflow:hidden;
+  transition: border-color 0.3s;
+}
+.stat-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+}
+.stat-card.s-red::before { background:var(--red); }
+.stat-card.s-blue::before { background:var(--blue); }
+.stat-card.s-green::before { background:var(--green); }
+.stat-card.s-amber::before { background:var(--amber); }
+.stat-label { font-family:'Share Tech Mono'; font-size:0.65rem; color:var(--muted); letter-spacing:2px; margin-bottom:0.5rem; }
+.stat-value {
+  font-family:'Orbitron'; font-weight:700; font-size:2rem;
+  transition: color 0.3s;
+}
+.s-red .stat-value { color:var(--red); }
+.s-blue .stat-value { color:var(--blue); }
+.s-green .stat-value { color:var(--green); }
+.s-amber .stat-value { color:var(--amber); }
+.stat-sub { font-size:0.75rem; color:var(--muted); margin-top:0.25rem; }
+.stat-delta {
+  position:absolute; top:1rem; right:1rem;
+  font-family:'Share Tech Mono'; font-size:0.65rem;
+}
+.delta-up { color:var(--green); }
+.delta-dn { color:var(--red); }
+
+.dashboard-bottom { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+@media(max-width:768px) { .dashboard-bottom { grid-template-columns:1fr; } }
+
+.dash-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius:3px; overflow:hidden;
+}
+.dash-panel-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+  font-family:'Share Tech Mono'; font-size:0.7rem; letter-spacing:2px;
+}
+.dash-panel-header span { color: var(--blue); }
+.dash-panel-body { padding: 0.75rem 1rem; }
+
+.log-entry {
+  display:flex; align-items:flex-start; gap:0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size:0.8rem;
+  animation: logSlide 0.3s ease both;
+}
+@keyframes logSlide { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+.log-entry:last-child { border-bottom:none; }
+.log-time { font-family:'Share Tech Mono'; font-size:0.65rem; color:var(--muted); flex-shrink:0; width:52px; }
+.log-sev {
+  font-family:'Share Tech Mono'; font-size:0.6rem;
+  padding: 0.1rem 0.4rem; border-radius:1px; flex-shrink:0;
+}
+.sev-crit { background:rgba(255,34,68,0.25); color:var(--red); }
+.sev-warn { background:rgba(255,170,0,0.2); color:var(--amber); }
+.sev-info { background:rgba(0,200,255,0.15); color:var(--blue); }
+.sev-ok   { background:rgba(0,255,136,0.12); color:var(--green); }
+.log-msg { color:var(--white); flex:1; }
+
+.alert-item {
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border-radius:2px; border-left:3px solid;
+  font-size:0.82rem;
+}
+.alert-item:last-child { margin-bottom:0; }
+.alert-item.crit { border-color:var(--red); background:rgba(255,34,68,0.07); }
+.alert-item.warn { border-color:var(--amber); background:rgba(255,170,0,0.05); }
+.alert-item.info { border-color:var(--blue); background:rgba(0,200,255,0.05); }
+.alert-title { font-weight:700; color:var(--white); font-size:0.85rem; }
+.alert-detail { color:var(--muted); font-size:0.78rem; margin-top:0.1rem; }
+.alert-time { font-family:'Share Tech Mono'; font-size:0.62rem; color:var(--muted); }
+
+/* ── ATTACK CHAIN ── */
+.kill-chain {
+  display:grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+  margin-top: 1.5rem;
+}
+@media(max-width:900px) {
+  .kill-chain { grid-template-columns:repeat(4,1fr); }
+}
+.kc-step {
+  position:relative;
+  padding: 1.2rem 0.75rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  text-align:center;
+  transition: all 0.3s;
+}
+.kc-step:not(:last-child)::after {
+  content:'›'; position:absolute; right:-8px; top:50%; transform:translateY(-50%);
+  color:var(--muted); font-size:1.2rem; z-index:2;
+}
+.kc-step.active {
+  border-color:var(--red); background:var(--red-dim);
+  box-shadow: 0 0 20px rgba(255,34,68,0.15);
+}
+.kc-step.done {
+  border-color:var(--green); background:var(--green-dim);
+}
+.kc-step.blocked {
+  border-color:var(--blue); background:var(--blue-dim);
+}
+.kc-num {
+  font-family:'Orbitron'; font-size:1.5rem; font-weight:900;
+  margin-bottom:0.25rem;
+}
+.kc-step.active .kc-num { color:var(--red); }
+.kc-step.done .kc-num { color:var(--green); }
+.kc-step.blocked .kc-num { color:var(--blue); }
+.kc-step:not(.active):not(.done):not(.blocked) .kc-num { color:var(--muted); }
+.kc-name {
+  font-family:'Share Tech Mono'; font-size:0.62rem; letter-spacing:1px;
+  color:var(--muted); line-height:1.3;
+}
+.kc-step.active .kc-name { color:var(--red); }
+.kc-step.done .kc-name { color:var(--green); }
+.kc-step.blocked .kc-name { color:var(--blue); }
+.kc-badge {
+  font-family:'Share Tech Mono'; font-size:0.55rem;
+  margin-top:0.4rem; padding: 0.15rem 0.4rem; border-radius:1px;
+  display:inline-block;
+}
+.kc-step.active .kc-badge { background:var(--red-dim); color:var(--red); border:1px solid var(--red); }
+.kc-step.done .kc-badge { background:var(--green-dim); color:var(--green); border:1px solid var(--green); }
+.kc-step.blocked .kc-badge { background:var(--blue-dim); color:var(--blue); border:1px solid var(--blue); }
+
+/* ── SCENARIO TABS ── */
+.tab-nav { display:flex; gap:0; margin-bottom:1.5rem; border:1px solid var(--border); border-radius:3px; overflow:hidden; }
+.tab-btn {
+  flex:1; padding:0.7rem; background:var(--panel); border:none;
+  font-family:'Share Tech Mono'; font-size:0.7rem; letter-spacing:1.5px;
+  color:var(--muted); cursor:pointer; transition:all 0.2s;
+  border-right: 1px solid var(--border);
+}
+.tab-btn:last-child { border-right:none; }
+.tab-btn.active { background:var(--blue-dim); color:var(--blue); }
+.tab-btn:hover:not(.active) { background:rgba(255,255,255,0.03); color:var(--white); }
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+
+.scenario-card {
+  background:var(--panel); border:1px solid var(--border); border-radius:3px; padding:2rem;
+}
+.sc-grid { display:grid; grid-template-columns:1fr 1fr; gap:2rem; }
+@media(max-width:700px){ .sc-grid { grid-template-columns:1fr; } }
+.sc-side-title {
+  font-family:'Share Tech Mono'; font-size:0.7rem; letter-spacing:2px;
+  margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;
+}
+.sc-side-title.red { color:var(--red); }
+.sc-side-title.blue { color:var(--blue); }
+.sc-step {
+  display:flex; gap:0.75rem; margin-bottom:0.75rem;
+  padding:0.75rem; background:var(--bg3); border-radius:2px;
+  border:1px solid var(--border);
+}
+.sc-step-num {
+  font-family:'Orbitron'; font-size:0.9rem; font-weight:700;
+  width:28px; flex-shrink:0; text-align:center; margin-top:1px;
+}
+.sc-side.red .sc-step-num { color:var(--red); }
+.sc-side.blue .sc-step-num { color:var(--blue); }
+.sc-step-title { font-weight:700; font-size:0.9rem; color:var(--white); }
+.sc-step-cmd {
+  font-family:'Share Tech Mono'; font-size:0.72rem;
+  background:rgba(0,0,0,0.4); padding:0.25rem 0.5rem;
+  border-radius:2px; margin-top:0.3rem; color:var(--green);
+  word-break:break-all;
+}
+.sc-step-desc { font-size:0.8rem; color:var(--muted); margin-top:0.25rem; }
+
+/* ── SETUP GUIDE ── */
+.setup-steps {
+  counter-reset: step;
+  display:grid; grid-template-columns:1fr 1fr; gap:1rem;
+}
+@media(max-width:700px){ .setup-steps { grid-template-columns:1fr; } }
+.setup-step {
+  background:var(--panel); border:1px solid var(--border); border-radius:3px;
+  padding:1.2rem; position:relative; padding-left:1.5rem;
+}
+.setup-step::before {
+  counter-increment:step;
+  content:counter(step);
+  position:absolute; left:-12px; top:1rem;
+  width:24px; height:24px; border-radius:50%;
+  background:var(--blue-dim); border:1px solid var(--blue);
+  color:var(--blue); font-family:'Orbitron'; font-size:0.65rem; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  text-align:center; line-height:1;
+}
+.setup-step-title { font-weight:700; font-size:0.9rem; color:var(--white); margin-bottom:0.4rem; }
+.setup-step-desc { font-size:0.82rem; color:var(--muted); }
+.setup-cmd {
+  font-family:'Share Tech Mono'; font-size:0.72rem;
+  background: #020509; border:1px solid var(--border);
+  padding:0.5rem 0.75rem; border-radius:2px;
+  margin-top:0.5rem; color:var(--green);
+  display:block; word-break:break-all;
+}
+
+/* ── FILE TREE ── */
+.file-tree {
+  font-family:'Share Tech Mono'; font-size:0.78rem;
+  background:#020509; border:1px solid var(--border); border-radius:3px;
+  padding:1.2rem; line-height:2;
+}
+.ft-dir { color:var(--blue); }
+.ft-file { color:var(--green); }
+.ft-comment { color:var(--muted); }
+.ft-red { color:var(--red); }
+.ft-amber { color:var(--amber); }
+
+/* ── GRADING TABLE ── */
+.grade-table { width:100%; border-collapse:collapse; }
+.grade-table th, .grade-table td {
+  padding:0.7rem 1rem; text-align:left;
+  border-bottom: 1px solid var(--border);
+  font-size:0.85rem;
+}
+.grade-table th {
+  font-family:'Share Tech Mono'; font-size:0.65rem; letter-spacing:2px;
+  color:var(--muted); background:var(--panel2);
+  text-transform:uppercase;
+}
+.grade-table tr:last-child td { border-bottom:none; }
+.grade-table tbody tr:hover { background:rgba(255,255,255,0.02); }
+.grade-cat { font-weight:700; color:var(--white); }
+.grade-pts { font-family:'Orbitron'; font-size:0.85rem; color:var(--amber); }
+.grade-desc { color:var(--muted); font-size:0.8rem; }
+
+/* ── FOOTER ── */
+footer {
+  position:relative; z-index:1;
+  border-top:1px solid var(--border);
+  padding: 2rem;
+  text-align:center;
+  font-family:'Share Tech Mono'; font-size:0.7rem; color:var(--muted);
+  letter-spacing:1px;
+}
+footer span { color:var(--blue); }
+
+/* ── UTILS ── */
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+@media(max-width:700px) { .grid-2 { grid-template-columns:1fr; } }
+.mt1 { margin-top:1rem; }
+.mt2 { margin-top:2rem; }
+.gap-1 { gap:1rem; }
+
+/* ── FLASHING ALERT ── */
+.flash-alert {
+  background: rgba(255,34,68,0.08);
+  border:1px solid rgba(255,34,68,0.4);
+  border-radius:3px; padding:0.75rem 1.2rem;
+  font-family:'Share Tech Mono'; font-size:0.75rem;
+  color:var(--red); margin-bottom:1.5rem;
+  display:flex; align-items:center; gap:0.75rem;
+  animation: flashBorder 2s ease-in-out infinite;
+}
+@keyframes flashBorder {
+  0%,100% { border-color:rgba(255,34,68,0.4); }
+  50% { border-color:rgba(255,34,68,0.9); box-shadow:0 0 15px rgba(255,34,68,0.2); }
+}
+.flash-dot {
+  width:8px;height:8px;border-radius:50%;background:var(--red);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* ── NETWORK MAP ── */
+.netmap {
+  background:#020509; border:1px solid var(--border); border-radius:3px;
+  padding:1.5rem; position:relative; min-height:220px;
+  display:flex; align-items:center; justify-content:center;
+}
+.netmap-node {
+  position:absolute;
+  width:60px; height:60px; border-radius:50%;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  font-family:'Share Tech Mono'; font-size:0.58rem; text-align:center;
+  border:2px solid; gap:2px;
+  transition: all 0.3s;
+}
+.netmap-node:hover { transform:scale(1.1); }
+.nn-attacker { top:20px; left:30px; border-color:var(--red); background:var(--red-dim); color:var(--red); }
+.nn-victim   { top:20px; right:30px; border-color:var(--amber); background:var(--amber-dim); color:var(--amber); }
+.nn-c2       { bottom:30px; left:50%; transform:translateX(-50%); border-color:var(--red); background:var(--red-dim); color:var(--red); animation:nodeGlow 2s ease-in-out infinite; }
+.nn-siem     { top:50%; right:10px; transform:translateY(-50%); border-color:var(--blue); background:var(--blue-dim); color:var(--blue); }
+.nn-ids      { top:50%; left:10px; transform:translateY(-50%); border-color:var(--green); background:var(--green-dim); color:var(--green); }
+.nn-log      { bottom:30px; right:30px; border-color:var(--blue); background:var(--blue-dim); color:var(--blue); }
+@keyframes nodeGlow {
+  0%,100%{box-shadow:0 0 0 0 rgba(255,34,68,0.4)} 50%{box-shadow:0 0 0 8px rgba(255,34,68,0)}
+}
+.nn-label { font-size:0.6rem; line-height:1.2; }
+.nn-icon { font-size:1.1rem; }
+
+/* connection lines via SVG */
+.netmap-svg {
+  position:absolute; inset:0; width:100%; height:100%; pointer-events:none;
+}
+.net-line { stroke-dasharray:4 3; animation:dashFlow 1.5s linear infinite; }
+@keyframes dashFlow { from{stroke-dashoffset:20} to{stroke-dashoffset:0} }
+
+</style>
+</head>
+<body>
+
+<!-- ══ NAVBAR ══ -->
+<nav>
+  <div class="nav-logo">MINI<span>SOC</span> LAB</div>
+  <div class="nav-links">
+    <a href="#blueprint" class="active">Blueprint</a>
+    <a href="#teams">Teams</a>
+    <a href="#todo">To-Do</a>
+    <a href="#live">Live Sim</a>
+    <a href="#scenarios">Scenarios</a>
+    <a href="#setup">Setup</a>
+  </div>
+  <div class="nav-status">
+    <div class="pulse"></div>
+    SIM ACTIVE
+  </div>
+</nav>
+
+<!-- ══ HERO ══ -->
+<div class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-glow-red"></div>
+  <div class="hero-tag">REME PROJECT — CYBERSECURITY LAB</div>
+  <h1>
+    <span class="red">RED</span> TEAM<br>
+    <span style="font-size:0.6em;color:var(--muted)">vs</span><br>
+    <span class="blue">BLUE</span> TEAM
+  </h1>
+  <p class="hero-sub">A controlled adversary simulation lab where attackers deploy malware-like tactics while defenders monitor, detect, and respond in real-time.</p>
+  <div class="hero-badges">
+    <span class="badge badge-red">⚔ 2 ATTACKERS</span>
+    <span class="badge badge-blue">🛡 2 DEFENDERS</span>
+    <span class="badge badge-green">✓ 4 SCENARIOS</span>
+    <span class="badge badge-amber">⚡ LIVE SIM</span>
+  </div>
+  <div class="hero-scroll">▼ SCROLL TO EXPLORE ▼</div>
+</div>
+
+<!-- ══ SECTION 1: BLUEPRINT ══ -->
+<section id="blueprint">
+  <div class="section-label">01 — ARCHITECTURE</div>
+  <h2>Lab Blueprint</h2>
+  <p class="section-desc">Full system design showing how the Red Team attack infrastructure connects to the Blue Team's defensive stack via a shared isolated network.</p>
+
+  <div class="blueprint-wrap">
+    <div class="arch-grid">
+
+      <!-- RED COLUMN -->
+      <div class="arch-col">
+        <div class="col-header red">⚔ RED TEAM — OFFENSE</div>
+        <div class="arch-box red">
+          <div class="arch-box-title">ATTACKER MACHINE</div>
+          <ul>
+            <li>Kali Linux / Python Scripts</li>
+            <li>Malware Simulator (beacon.py)</li>
+            <li>Persistence scripts (cron, registry)</li>
+            <li>File manipulation payloads</li>
+          </ul>
+        </div>
+        <div class="arch-box red">
+          <div class="arch-box-title">C2 SERVER (SIMULATED)</div>
+          <ul>
+            <li>Flask-based C2 listener</li>
+            <li>Beacon response handler</li>
+            <li>Command dispatcher</li>
+            <li>Exfiltration endpoint</li>
+          </ul>
+        </div>
+        <div class="arch-box red">
+          <div class="arch-box-title">ATTACK VECTORS</div>
+          <ul>
+            <li>HTTP/HTTPS beaconing</li>
+            <li>Scheduled task persistence</li>
+            <li>Fake process injection</li>
+            <li>Staged file drops</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- MIDDLE -->
+      <div class="arch-middle">
+        <div class="arch-arrow">
+          <div class="arch-arrow-line"></div>
+          <div class="arch-arrow-text">ISOLATED<br>VLAN<br>10.0.0.0/24</div>
+          <div class="arch-arrow-line"></div>
+        </div>
+        <div style="font-family:Share Tech Mono;font-size:0.6rem;color:var(--muted);text-align:center;border:1px solid var(--border);padding:0.4rem;border-radius:2px;">
+          TRAFFIC<br>MIRROR
+        </div>
+        <div class="arch-arrow">
+          <div class="arch-arrow-line" style="background:linear-gradient(to bottom,var(--blue),var(--green));"></div>
+          <div class="arch-arrow-text">LOG<br>STREAM</div>
+          <div class="arch-arrow-line" style="background:linear-gradient(to bottom,var(--blue),var(--green));"></div>
+        </div>
+      </div>
+
+      <!-- BLUE COLUMN -->
+      <div class="arch-col">
+        <div class="col-header blue">🛡 BLUE TEAM — DEFENSE</div>
+        <div class="arch-box blue">
+          <div class="arch-box-title">MONITORING MACHINE</div>
+          <ul>
+            <li>SIEM Dashboard (ELK / Wazuh)</li>
+            <li>Process Monitor (psutil / Sysmon)</li>
+            <li>Network Sniffer (Scapy / Wireshark)</li>
+            <li>File Integrity Monitor</li>
+          </ul>
+        </div>
+        <div class="arch-box blue">
+          <div class="arch-box-title">DETECTION ENGINE</div>
+          <ul>
+            <li>Sigma-style detection rules</li>
+            <li>Anomaly threshold alerts</li>
+            <li>Automated response scripts</li>
+            <li>IOC matching engine</li>
+          </ul>
+        </div>
+        <div class="arch-box blue">
+          <div class="arch-box-title">RESPONSE ACTIONS</div>
+          <ul>
+            <li>Process kill automation</li>
+            <li>IP block via iptables</li>
+            <li>Alert dashboard + email</li>
+            <li>Forensic evidence capture</li>
+          </ul>
+        </div>
+      </div>
+
+    </div><!-- /arch-grid -->
+
+    <!-- SHARED LAYER -->
+    <div style="margin-top:1.5rem;">
+      <div class="arch-box shared" style="max-width:100%;">
+        <div class="arch-box-title" style="text-align:center;">⚙ SHARED INFRASTRUCTURE</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:0.5rem;">
+          <div>
+            <div style="color:var(--amber);font-size:0.78rem;font-weight:700;">Isolated Network</div>
+            <div style="color:var(--muted);font-size:0.78rem;">VirtualBox Host-Only Adapter or physical LAN switch. No internet access during simulation.</div>
+          </div>
+          <div>
+            <div style="color:var(--amber);font-size:0.78rem;font-weight:700;">Log Aggregator</div>
+            <div style="color:var(--muted);font-size:0.78rem;">Elasticsearch or flat-file JSON logs. Both teams can reference logs post-simulation.</div>
+          </div>
+          <div>
+            <div style="color:var(--amber);font-size:0.78rem;font-weight:700;">Scenario Controller</div>
+            <div style="color:var(--muted);font-size:0.78rem;">Instructor panel to trigger/pause attacks. Score tracking for detection speed.</div>
+          </div>
+          <div>
+            <div style="color:var(--amber);font-size:0.78rem;font-weight:700;">Evidence Vault</div>
+            <div style="color:var(--muted);font-size:0.78rem;">Shared folder for red team to deposit payloads, blue team to deposit forensic reports.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /blueprint-wrap -->
+
+  <!-- KILL CHAIN -->
+  <div class="mt2">
+    <div class="section-label" style="margin-bottom:0.5rem;">MITRE ATT&CK — SIMULATED KILL CHAIN</div>
+    <div class="kill-chain" id="killChain">
+      <div class="kc-step done">
+        <div class="kc-num">1</div>
+        <div class="kc-name">RECON</div>
+        <div class="kc-badge">DONE</div>
+      </div>
+      <div class="kc-step done">
+        <div class="kc-num">2</div>
+        <div class="kc-name">INITIAL ACCESS</div>
+        <div class="kc-badge">DONE</div>
+      </div>
+      <div class="kc-step active">
+        <div class="kc-num">3</div>
+        <div class="kc-name">EXECUTION</div>
+        <div class="kc-badge">ACTIVE</div>
+      </div>
+      <div class="kc-step blocked">
+        <div class="kc-num">4</div>
+        <div class="kc-name">PERSISTENCE</div>
+        <div class="kc-badge">BLOCKED</div>
+      </div>
+      <div class="kc-step">
+        <div class="kc-num">5</div>
+        <div class="kc-name">PRIV ESC</div>
+        <div class="kc-badge" style="background:rgba(255,255,255,0.05);color:var(--muted);border:1px solid var(--border);">PENDING</div>
+      </div>
+      <div class="kc-step">
+        <div class="kc-num">6</div>
+        <div class="kc-name">LATERAL MOVE</div>
+        <div class="kc-badge" style="background:rgba(255,255,255,0.05);color:var(--muted);border:1px solid var(--border);">PENDING</div>
+      </div>
+      <div class="kc-step">
+        <div class="kc-num">7</div>
+        <div class="kc-name">EXFILTRATION</div>
+        <div class="kc-badge" style="background:rgba(255,255,255,0.05);color:var(--muted);border:1px solid var(--border);">PENDING</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ══ SECTION 2: TEAMS ══ -->
+<div class="full-section" id="teams">
+  <div class="full-section-inner">
+    <div class="section-label">02 — TEAM STRUCTURE</div>
+    <h2>Team Roles & Responsibilities</h2>
+    <p class="section-desc">Each team has 2 members with clearly divided roles. Coordination between both members is key to a realistic simulation.</p>
+
+    <div class="team-grid">
+
+      <!-- RED TEAM -->
+      <div class="team-card red">
+        <div class="team-card-header">
+          <div class="team-icon">⚔️</div>
+          <div>
+            <div class="team-card-title">RED TEAM</div>
+            <div class="team-card-sub">ADVERSARY SIMULATION — 2 MEMBERS</div>
+          </div>
+        </div>
+        <div class="team-card-body">
+
+          <div class="member-slot">
+            <div class="member-num">R1</div>
+            <div>
+              <div class="member-role">Malware Developer / Attack Scripter</div>
+              <div class="member-resp">Writes beacon.py, persistence scripts, file manipulation payloads. Designs the attack flow. Responsible for all Python attack tooling.</div>
+            </div>
+          </div>
+
+          <div class="member-slot">
+            <div class="member-num">R2</div>
+            <div>
+              <div class="member-role">C2 Operator / Evasion Specialist</div>
+              <div class="member-resp">Runs the Flask C2 server, executes attacks on schedule, tries to avoid detection. Documents each attack step in the Red Team report.</div>
+            </div>
+          </div>
+
+          <div class="team-tools">
+            <div class="tools-label">TOOLS / STACK</div>
+            <div class="tools-list">
+              <span class="tool-tag">Python 3</span>
+              <span class="tool-tag">Flask C2</span>
+              <span class="tool-tag">Cron/Task Sched</span>
+              <span class="tool-tag">Netcat</span>
+              <span class="tool-tag">Requests lib</span>
+              <span class="tool-tag">Scapy</span>
+              <span class="tool-tag">Bash</span>
+              <span class="tool-tag">VirtualBox</span>
+            </div>
+          </div>
+
+          <div style="margin-top:1rem;padding:0.75rem;background:var(--red-dim);border-radius:2px;border:1px solid rgba(255,34,68,0.2);">
+            <div style="font-family:Share Tech Mono;font-size:0.65rem;color:var(--red);letter-spacing:1px;margin-bottom:0.4rem;">DELIVERABLES</div>
+            <div style="font-size:0.8rem;color:var(--muted);">
+              • Working beacon.py with C2 communication<br>
+              • Persistence mechanism (cron + registry)<br>
+              • File drop / manipulation script<br>
+              • Red Team Attack Report (PDF)
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLUE TEAM -->
+      <div class="team-card blue">
+        <div class="team-card-header">
+          <div class="team-icon">🛡️</div>
+          <div>
+            <div class="team-card-title">BLUE TEAM</div>
+            <div class="team-card-sub">SECURITY OPERATIONS — 2 MEMBERS</div>
+          </div>
+        </div>
+        <div class="team-card-body">
+
+          <div class="member-slot">
+            <div class="member-num">B1</div>
+            <div>
+              <div class="member-role">SOC Analyst / Detection Engineer</div>
+              <div class="member-resp">Writes detection rules, builds the SIEM dashboard, monitors logs during simulation. Calls out IOCs in real-time and timestamps detections.</div>
+            </div>
+          </div>
+
+          <div class="member-slot">
+            <div class="member-num">B2</div>
+            <div>
+              <div class="member-role">Incident Responder / Forensics</div>
+              <div class="member-resp">Triggers automated response scripts, captures forensic evidence, conducts post-mortem analysis. Writes the Blue Team Incident Response Report.</div>
+            </div>
+          </div>
+
+          <div class="team-tools">
+            <div class="tools-label">TOOLS / STACK</div>
+            <div class="tools-list">
+              <span class="tool-tag">psutil</span>
+              <span class="tool-tag">Scapy / tshark</span>
+              <span class="tool-tag">Watchdog</span>
+              <span class="tool-tag">ELK / Wazuh</span>
+              <span class="tool-tag">iptables</span>
+              <span class="tool-tag">Sigma Rules</span>
+              <span class="tool-tag">Python 3</span>
+              <span class="tool-tag">Suricata</span>
+            </div>
+          </div>
+
+          <div style="margin-top:1rem;padding:0.75rem;background:var(--blue-dim);border-radius:2px;border:1px solid rgba(0,200,255,0.2);">
+            <div style="font-family:Share Tech Mono;font-size:0.65rem;color:var(--blue);letter-spacing:1px;margin-bottom:0.4rem;">DELIVERABLES</div>
+            <div style="font-size:0.8rem;color:var(--muted);">
+              • SOC Dashboard (this HTML or similar)<br>
+              • Detection rules (YAML / Python)<br>
+              • Automated response scripts<br>
+              • Incident Response Report (PDF)
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /team-grid -->
+
+    <!-- Network Map -->
+    <div class="mt2">
+      <div class="section-label" style="margin-bottom:1rem;">SIMULATED NETWORK TOPOLOGY</div>
+      <div class="netmap" style="height:260px;">
+        <svg class="netmap-svg" viewBox="0 0 800 260" preserveAspectRatio="none">
+          <!-- Attack paths (red) -->
+          <line x1="130" y1="60" x2="400" y2="200" stroke="#ff2244" stroke-width="1.5" class="net-line" stroke-dasharray="6 4"/>
+          <line x1="400" y1="200" x2="680" y2="60" stroke="#ff2244" stroke-width="1" class="net-line" stroke-dasharray="6 4"/>
+          <!-- Log flows (blue) -->
+          <line x1="680" y1="60" x2="730" y2="130" stroke="#00c8ff" stroke-width="1.5" class="net-line"/>
+          <line x1="680" y1="60" x2="650" y2="200" stroke="#00c8ff" stroke-width="1" class="net-line"/>
+          <line x1="80" y1="130" x2="130" y2="60" stroke="#00ff88" stroke-width="1" class="net-line"/>
+          <line x1="80" y1="130" x2="400" y2="200" stroke="#00ff88" stroke-width="1" class="net-line" stroke-dasharray="3 3"/>
+        </svg>
+        <div class="netmap-node nn-attacker"><span class="nn-icon">⚔️</span><span class="nn-label">KALI<br>ATTACKER<br>10.0.0.10</span></div>
+        <div class="netmap-node nn-victim"><span class="nn-icon">💻</span><span class="nn-label">VICTIM VM<br>10.0.0.20</span></div>
+        <div class="netmap-node nn-c2"><span class="nn-icon">📡</span><span class="nn-label">C2 SERVER<br>10.0.0.30</span></div>
+        <div class="netmap-node nn-siem"><span class="nn-icon">📊</span><span class="nn-label">SIEM<br>10.0.0.40</span></div>
+        <div class="netmap-node nn-ids"><span class="nn-icon">🔍</span><span class="nn-label">IDS/IPS<br>10.0.0.50</span></div>
+        <div class="netmap-node nn-log"><span class="nn-icon">🗃️</span><span class="nn-label">LOGS<br>10.0.0.60</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ SECTION 3: TO-DO LISTS ══ -->
+<section id="todo">
+  <div class="section-label">03 — TASK MANAGEMENT</div>
+  <h2>Team To-Do Lists</h2>
+  <p class="section-desc">Click any task to mark it complete. Each phase tracks progress separately. These are your sprint boards.</p>
+
+  <div class="todo-columns">
+
+    <!-- RED TEAM TODO -->
+    <div class="todo-col red-col" id="redTodo">
+      <div style="font-family:Orbitron;font-size:0.9rem;color:var(--red);letter-spacing:2px;padding:0.5rem 0;border-bottom:1px solid rgba(255,34,68,0.2);margin-bottom:0.25rem;">
+        ⚔ RED TEAM TASKS
+      </div>
+
+      <!-- Phase 1 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">1</span>SETUP & ENVIRONMENT</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Set up Kali Linux VM (attacker machine)</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Configure isolated VirtualBox Host-Only network (10.0.0.0/24)</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Set up victim VM (Ubuntu/Windows) as target</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Install Python 3, Flask, Requests on attacker machine</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Test network connectivity between VMs (ping test)</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 2 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">2</span>BEACON DEVELOPMENT</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write beacon.py — HTTP POST to C2 every 30 seconds with hostname, IP, timestamp</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Build Flask C2 server (server.py) that receives and logs beacon data</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Add command dispatcher: C2 sends back commands (sleep, exfil, persist)</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Test beacon → C2 communication end-to-end</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Document C2 endpoints and payload format in Red Team notes</div>
+            <div class="todo-priority p-low">LOW</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 3 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">3</span>PERSISTENCE MECHANISMS</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Linux: Add cron job (*/5 * * * * python3 /tmp/beacon.py)</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Windows: Add registry run key for beacon persistence</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Create fake service to mimic malware process hiding</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Test that beacon survives system reboot</div>
+            <div class="todo-priority p-low">LOW</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 4 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">4</span>FILE MANIPULATION & EXFIL</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write file_drop.py — creates suspicious files in /tmp or %TEMP%</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Simulate data exfiltration via HTTP POST to C2</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write process_spawn.py — spawn suspicious child processes (netcat, curl)</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 5 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">5</span>REPORTING</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Document all attack TTPs used (MITRE ATT&CK mapping)</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write Red Team Report: timeline, tools, techniques, what was detected vs undetected</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Create demo video / screenshot evidence of each attack</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Prepare live demo for class presentation</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /red todo -->
+
+    <!-- BLUE TEAM TODO -->
+    <div class="todo-col blue-col" id="blueTodo">
+      <div style="font-family:Orbitron;font-size:0.9rem;color:var(--blue);letter-spacing:2px;padding:0.5rem 0;border-bottom:1px solid rgba(0,200,255,0.2);margin-bottom:0.25rem;">
+        🛡 BLUE TEAM TASKS
+      </div>
+
+      <!-- Phase 1 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">1</span>SETUP & MONITORING STACK</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Set up Blue Team monitoring VM (Ubuntu) on same isolated network</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Install Python psutil, Scapy, watchdog libraries</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Configure Sysmon on victim VM for detailed process logging</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Set up log aggregation (ELK stack or flat-file JSON logger)</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Verify that victim machine logs are visible on blue team machine</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 2 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">2</span>DETECTION RULES</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write process_monitor.py — detect suspicious processes (nc, curl, python3 from /tmp)</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write network_monitor.py — detect repeated outbound HTTP on non-standard ports (beaconing)</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write file_monitor.py — alert on file creation in /tmp, new cron jobs, registry changes</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Create detection rule config (YAML): thresholds, IOC patterns, alert severity levels</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Test detection rules against known-good baseline (no false positives)</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 3 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">3</span>ALERT DASHBOARD</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Build SOC dashboard HTML (or use this file as the template!)</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Connect monitors to dashboard via WebSocket or polling API</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Implement real-time alert feed (severity: CRITICAL / WARN / INFO)</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Add MITRE ATT&CK tag to each alert (T1059, T1053, etc.)</div>
+            <div class="todo-priority p-low">LOW</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 4 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">4</span>AUTOMATED RESPONSE</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write auto_kill.py — kill process by PID when CRITICAL alert triggers</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write ip_block.py — auto-add iptables DROP rule for C2 IP on detection</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write remove_persistence.py — delete malicious cron jobs on detection</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Test response automation: trigger attack → verify auto-response fires within 60s</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 5 -->
+      <div class="todo-phase">
+        <div class="todo-phase-header" onclick="togglePhase(this)">
+          <div class="todo-phase-title"><span class="phase-num">5</span>REPORTING & FORENSICS</div>
+          <div class="phase-toggle">▼</div>
+        </div>
+        <div class="todo-items">
+          <div class="progress-bar-wrap">
+            <div class="progress-label"><span>Phase Progress</span><span class="phase-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mt1"></div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Generate detection timeline: when was each attack detected vs when it launched</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Write Incident Response Report: what was detected, MTTR, missed events</div>
+            <div class="todo-priority p-high">HIGH</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Collect forensic artifacts: log files, pcap, screenshots</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+          <div class="todo-item" onclick="toggleTodo(this)">
+            <div class="todo-cb"></div>
+            <div class="todo-text">Prepare demo: show live detection triggering auto-response</div>
+            <div class="todo-priority p-med">MED</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /blue todo -->
+
+  </div><!-- /todo-columns -->
+</section>
+
+<!-- ══ SECTION 4: LIVE SIM DASHBOARD ══ -->
+<div class="full-section" id="live">
+  <div class="full-section-inner">
+    <div class="section-label">04 — LIVE SIMULATION</div>
+    <h2>SOC Dashboard — Live Feed</h2>
+    <p class="section-desc">Simulated real-time view of what the Blue Team SOC analyst sees during an active attack scenario.</p>
+
+    <div class="flash-alert">
+      <div class="flash-dot"></div>
+      ACTIVE THREAT DETECTED — Beaconing activity identified from 10.0.0.10 → 10.0.0.30 — AUTO-RESPONSE TRIGGERED
+    </div>
+
+    <!-- Stats row -->
+    <div class="dashboard-grid">
+      <div class="stat-card s-red">
+        <div class="stat-label">ACTIVE ALERTS</div>
+        <div class="stat-value" id="statAlerts">7</div>
+        <div class="stat-sub">3 CRITICAL</div>
+        <div class="stat-delta delta-up" id="deltaAlerts">▲ +2</div>
+      </div>
+      <div class="stat-card s-blue">
+        <div class="stat-label">EVENTS / MIN</div>
+        <div class="stat-value" id="statEPS">142</div>
+        <div class="stat-sub">Avg: 18 normal</div>
+        <div class="stat-delta delta-up">▲ 7.8x spike</div>
+      </div>
+      <div class="stat-card s-amber">
+        <div class="stat-label">BEACON COUNT</div>
+        <div class="stat-value" id="statBeacons">23</div>
+        <div class="stat-sub">30s interval</div>
+        <div class="stat-delta delta-up">▲ +1 new</div>
+      </div>
+      <div class="stat-card s-green">
+        <div class="stat-label">BLOCKS FIRED</div>
+        <div class="stat-value" id="statBlocks">4</div>
+        <div class="stat-sub">Auto-response</div>
+        <div class="stat-delta" style="color:var(--green)">✓ ACTIVE</div>
+      </div>
+    </div>
+
+    <div class="dashboard-bottom">
+      <!-- Live Log Feed -->
+      <div class="dash-panel">
+        <div class="dash-panel-header">
+          <span>▶ LIVE EVENT LOG</span>
+          <span style="color:var(--green);font-size:0.65rem;">● STREAMING</span>
+        </div>
+        <div class="dash-panel-body" id="liveLog" style="max-height:240px;overflow-y:auto;padding:0.5rem 0.75rem;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Active Alerts -->
+      <div class="dash-panel">
+        <div class="dash-panel-header">
+          <span>⚠ ACTIVE ALERTS</span>
+          <span style="color:var(--red);font-size:0.65rem;" id="alertCount">7 OPEN</span>
+        </div>
+        <div class="dash-panel-body" id="alertPanel">
+          <div class="alert-item crit">
+            <div class="alert-title">🔴 C2 BEACONING DETECTED</div>
+            <div class="alert-detail">Process python3 making repeated HTTP POST to 10.0.0.30:5000 — Interval: 30s — PID: 4821</div>
+            <div class="alert-time">T1071.001 • Network Comms • 14:32:08</div>
+          </div>
+          <div class="alert-item crit">
+            <div class="alert-title">🔴 MALICIOUS CRON JOB ADDED</div>
+            <div class="alert-detail">New cron entry: */5 * * * * python3 /tmp/.beacon.py — User: www-data</div>
+            <div class="alert-time">T1053.003 • Persistence • 14:28:45</div>
+          </div>
+          <div class="alert-item warn">
+            <div class="alert-title">🟡 SUSPICIOUS FILE CREATED</div>
+            <div class="alert-detail">File /tmp/.beacon.py created — Hidden file in temp directory — Size: 2.3KB</div>
+            <div class="alert-time">T1105 • Ingress Tool Transfer • 14:28:32</div>
+          </div>
+          <div class="alert-item warn">
+            <div class="alert-title">🟡 OUTBOUND DATA TRANSFER</div>
+            <div class="alert-detail">200KB sent to 10.0.0.30:5000 over 12 minutes — Possible exfiltration</div>
+            <div class="alert-time">T1041 • Exfiltration • 14:30:11</div>
+          </div>
+          <div class="alert-item info">
+            <div class="alert-title">🔵 PORT SCAN DETECTED</div>
+            <div class="alert-detail">SYN scan from 10.0.0.10 on ports 22,80,443,8080 against 10.0.0.20</div>
+            <div class="alert-time">T1046 • Discovery • 14:21:03</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Terminal -->
+    <div class="mt2">
+      <div class="terminal-wrap">
+        <div class="terminal-bar">
+          <div class="t-dot r"></div><div class="t-dot y"></div><div class="t-dot g"></div>
+          <div class="t-title">BLUE TEAM — AUTO-RESPONSE CONSOLE</div>
+        </div>
+        <div class="terminal-body" id="terminalBody">
+          <span class="t-line"><span class="t-info">[14:28:32]</span> <span class="t-out">file_monitor.py started — watching /tmp, /var/spool/cron, /etc/cron.d</span></span>
+          <span class="t-line"><span class="t-info">[14:28:32]</span> <span class="t-out">process_monitor.py started — baseline: 87 processes</span></span>
+          <span class="t-line"><span class="t-info">[14:28:32]</span> <span class="t-out">network_monitor.py started — sniffing on eth0</span></span>
+          <span class="t-line"><span class="t-warn">[14:28:33]</span> <span class="t-out">ALERT: New file detected: /tmp/.beacon.py (hidden file in /tmp)</span></span>
+          <span class="t-line"><span class="t-alert">[14:28:45]</span> [CRITICAL] CRON MODIFICATION DETECTED: */5 * * * * python3 /tmp/.beacon.py</span>
+          <span class="t-line"><span class="t-prompt">blue@soc:~$ </span><span class="t-cmd">python3 remove_persistence.py --remove-cron "beacon"</span></span>
+          <span class="t-line"><span class="t-out">  [+] Scanning crontab for malicious entries...</span></span>
+          <span class="t-line"><span class="t-out">  [+] Found: */5 * * * * python3 /tmp/.beacon.py</span></span>
+          <span class="t-line"><span class="t-out">  [+] Removing entry from crontab...</span></span>
+          <span class="t-line"><span class="t-out">  [✓] Persistence mechanism removed</span></span>
+          <span class="t-line"><span class="t-info">[14:32:08]</span> <span class="t-out">BEACON DETECTED: python3 PID=4821 → POST http://10.0.0.30:5000/beacon (count: 23)</span></span>
+          <span class="t-line"><span class="t-alert">[14:32:09]</span> [CRITICAL] THRESHOLD EXCEEDED: 23 beacons from same process in 12 minutes</span>
+          <span class="t-line"><span class="t-prompt">blue@soc:~$ </span><span class="t-cmd">python3 auto_kill.py --pid 4821 --reason "C2 beaconing"</span></span>
+          <span class="t-line"><span class="t-out">  [+] Attempting to kill PID 4821 (python3)...</span></span>
+          <span class="t-line"><span class="t-out">  [✓] Process 4821 terminated</span></span>
+          <span class="t-prompt">blue@soc:~$ </span><span class="t-cmd">python3 ip_block.py --ip 10.0.0.30 --reason "C2 server"</span><br>
+          <span class="t-line"><span class="t-out">  [+] Adding iptables rule: DROP output to 10.0.0.30</span></span>
+          <span class="t-line"><span class="t-out">  [✓] IP 10.0.0.30 blocked via iptables</span></span>
+          <span class="t-line"><span class="t-out">  [✓] Alert logged to SIEM with evidence package</span></span>
+          <span class="t-line t-cursor"><span class="t-prompt">blue@soc:~$ </span>▌</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ SECTION 5: SCENARIOS ══ -->
+<section id="scenarios">
+  <div class="section-label">05 — ATTACK SCENARIOS</div>
+  <h2>4 Simulation Scenarios</h2>
+  <p class="section-desc">Each scenario is a defined round. Red team executes the attack, Blue team must detect and respond within the time limit.</p>
+
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab(this,'s1')">SCENARIO 1<br><span style="font-size:0.6rem;color:inherit">BEACONING</span></button>
+    <button class="tab-btn" onclick="switchTab(this,'s2')">SCENARIO 2<br><span style="font-size:0.6rem;color:inherit">PERSISTENCE</span></button>
+    <button class="tab-btn" onclick="switchTab(this,'s3')">SCENARIO 3<br><span style="font-size:0.6rem;color:inherit">FILE MANIP</span></button>
+    <button class="tab-btn" onclick="switchTab(this,'s4')">SCENARIO 4<br><span style="font-size:0.6rem;color:inherit">FULL CHAIN</span></button>
+  </div>
+
+  <!-- S1 -->
+  <div class="tab-content active" id="s1">
+    <div class="scenario-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:0.5rem;">
+        <div>
+          <div style="font-family:Orbitron;font-weight:700;font-size:1.1rem;color:var(--white);">Scenario 1: C2 Beaconing</div>
+          <div style="font-size:0.82rem;color:var(--muted);margin-top:0.25rem;">Red team runs beacon.py. Blue team must detect the pattern within 5 minutes.</div>
+        </div>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <span class="badge badge-red">⏱ 5 MIN DETECT</span>
+          <span class="badge badge-amber">MITRE: T1071</span>
+        </div>
+      </div>
+      <div class="sc-grid">
+        <div class="sc-side red">
+          <div class="sc-side-title red">⚔ RED TEAM ACTIONS</div>
+          <div class="sc-step">
+            <div class="sc-step-num">1</div>
+            <div>
+              <div class="sc-step-title">Start C2 Server</div>
+              <div class="sc-step-cmd">python3 server.py --port 5000 --log beacons.json</div>
+              <div class="sc-step-desc">Flask server listens for incoming beacon POST requests</div>
+            </div>
+          </div>
+          <div class="sc-step">
+            <div class="sc-step-num">2</div>
+            <div>
+              <div class="sc-step-title">Deploy Beacon on Victim</div>
+              <div class="sc-step-cmd">scp beacon.py victim@10.0.0.20:/tmp/.beacon.py && ssh victim "python3 /tmp/.beacon.py &"</div>
+              <div class="sc-step-desc">Copy beacon to /tmp (hidden) and execute in background</div>
+            </div>
+          </div>
+          <div class="sc-step">
+            <div class="sc-step-num">3</div>
+            <div>
+              <div class="sc-step-title">Confirm Beacons Received</div>
+              <div class="sc-step-cmd">tail -f beacons.json</div>
+              <div class="sc-step-desc">Every 30s: {"host":"victim","ip":"10.0.0.20","ts":"..."}</div>
+            </div>
+          </div>
+        </div>
+        <div class="sc-side blue">
+          <div class="sc-side-title blue">🛡 BLUE TEAM RESPONSE</div>
+          <div class="sc-step">
+            <div class="sc-step-num">1</div>
+            <div>
+              <div class="sc-step-title">Network Monitor Fires Alert</div>
+              <div class="sc-step-cmd">python3 network_monitor.py --alert-on-beacon --threshold 3</div>
+              <div class="sc-step-desc">Alerts after 3 identical outbound connections to same IP:port</div>
+            </div>
+          </div>
+          <div class="sc-step">
+            <div class="sc-step-num">2</div>
+            <div>
+              <div class="sc-step-title">Identify Malicious Process</div>
+              <div class="sc-step-cmd">python3 process_monitor.py --find-by-connection 10.0.0.30:5000</div>
+              <div class="sc-step-desc">Returns: PID=4821, name=python3, path=/tmp/.beacon.py</div>
+            </div>
+          </div>
+          <div class="sc-step">
+            <div class="sc-step-num">3</div>
+            <div>
+              <div class="sc-step-title">Kill Process + Block IP</div>
+              <div class="sc-step-cmd">python3 auto_kill.py --pid 4821 && python3 ip_block.py --ip 10.0.0.30</div>
+              <div class="sc-step-desc">Terminate beacon process and block C2 server IP via iptables</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- S2 -->
+  <div class="tab-content" id="s2">
+    <div class="scenario-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:0.5rem;">
+        <div>
+          <div style="font-family:Orbitron;font-weight:700;font-size:1.1rem;color:var(--white);">Scenario 2: Persistence</div>
+          <div style="font-size:0.82rem;color:var(--muted);margin-top:0.25rem;">Red team installs persistence via cron job. Blue team must detect and remove it.</div>
+        </div>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <span class="badge badge-red">⏱ 3 MIN DETECT</span>
+          <span class="badge badge-amber">MITRE: T1053</span>
+        </div>
+      </div>
+      <div class="sc-grid">
+        <div class="sc-side red">
+          <div class="sc-side-title red">⚔ RED TEAM ACTIONS</div>
+          <div class="sc-step">
+            <div class="sc-step-num">1</div>
+            <div>
+              <div class="sc-step-title">Install Cron Persistence</div>
+              <div class="sc-step-cmd">(crontab -l; echo "*/5 * * * * python3 /tmp/.beacon.py") | crontab -</div>
+              <div class="sc-step-desc">Adds beacon to run every 5 minutes — survives reboot</div>
+            </div>
+          </div>
+          <div class="sc-step">
+            <div class="sc-step-num">2</div>
+            <div>
+              <div class="sc-step-title">Registry Key (Windows)</div>
+              <div class="sc-step-cmd">reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v svchost32 /d "python3 C:\temp\beacon.py"</div>
+              <div class="sc-step-desc">Adds auto-start registry key masquerading as svchost</div>
+            </div>
+          </div>
+        </div>
+        <div class="sc-side blue">
+          <div class="sc-side-title blue">🛡 BLUE TEAM RESPONSE</div>
+          <div class="sc-step">
+            <div class="sc-step-num">1</div>
+            <div>
+              <div class="sc-step-title">Cron Change Alert</div>
+              <div class="sc-step-cmd">python3 file_monitor.py --watch /var/spool/cron --alert-new-entries</div>
+              <div class="sc-step-desc">Watchdog detects crontab modification event</div>
+            </div>
+          </div>
+          <div class="sc-step">
+            <div class="sc-step-num">2</div>
+            <div>
+              <div class="sc-step-title">Remove Persistence</div>
+              <div class="sc-step-cmd">python3 remove_persistence.py --remove-cron "beacon" --remove-reg-key "svchost32"</div>
+              <div class="sc-step-desc">Auto-removes both Linux cron entry and Windows registry key</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- S3 -->
+  <div class="tab-content" id="s3">
+    <div class="scenario-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:0.5rem;">
+        <div>
+          <div style="font-family:Orbitron;font-weight:700;font-size:1.1rem;color:var(--white);">Scenario 3: File Manipulation</div>
+          <div style="font-size:0.82rem;color:var(--muted);margin-top:0.25rem;">Red team drops and modifies files. Blue team must track changes using file integrity monitoring.</div>
+        </div>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <span class="badge badge-red">⏱ 4 MIN DETECT</span>
+          <span class="badge badge-amber">MITRE: T1105</span>
+        </div>
+      </div>
+      <div class="sc-grid">
+        <div class="sc-side red">
+          <div class="sc-side-title red">⚔ RED TEAM ACTIONS</div>
+          <div class="sc-step">
+            <div class="sc-step-num">1</div>
+            <div>
+              <div class="sc-step-title">Drop Payload Files</div>
+              <div class="sc-step-cmd">python3 file_drop.py --dir /tmp --count 5 --names ".svc,.sys,.dll"</div>
+              <div class="sc-step-desc">Creates 5 hidden files with suspicious extensions in /tmp</div>
+            </div>
+          </div>
+          <div class="sc-step">
+            <div class="sc-step-num">2</div>
+            <div>
+              <div class="sc-step-title">Modify System Files</div>
+              <div class="sc-step-cmd">echo "malicious_entry" >> /etc/hosts && touch /etc/cron.d/malicious</div>
+              <div class="sc-step-desc">Modifies /etc/hosts and creates a fake cron file</div>
+            </div>
+          </div>
+        </div>
+        <div class="sc-side blue">
+          <div class="sc-side-title blue">🛡 BLUE TEAM RESPONSE</div>
+          <div class="sc-step">
+            <div class="sc-step-num">1</div>
+            <div>
+              <div class="sc-step-title">FIM Alert — New Files</div>
+              <div class="sc-step-cmd">python3 file_monitor.py --baseline /tmp --watch-etc --alert-hidden</div>
+              <div class="sc-step-desc">Alerts on new hidden files and /etc directory changes</div>
+            </div>
+          </div>
+          <div class="sc-step">
+            <div class="sc-step-num">2</div>
+            <div>
+              <div class="sc-step-title">Quarantine Files</div>
+              <div class="sc-step-cmd">python3 quarantine.py --dir /tmp --hidden-only --move /quarantine/</div>
+              <div class="sc-step-desc">Moves suspicious files to quarantine folder for forensic analysis</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- S4 -->
+  <div class="tab-content" id="s4">
+    <div class="scenario-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:0.5rem;">
+        <div>
+          <div style="font-family:Orbitron;font-weight:700;font-size:1.1rem;color:var(--white);">Scenario 4: Full Attack Chain</div>
+          <div style="font-size:0.82rem;color:var(--muted);margin-top:0.25rem;">All 3 scenarios run in sequence — the ultimate challenge. Blue team must catch ALL stages.</div>
+        </div>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <span class="badge badge-red">⏱ 15 MIN TOTAL</span>
+          <span class="badge badge-amber">ALL MITRE TTPs</span>
+          <span class="badge badge-green">GRADED</span>
+        </div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:1.25rem;font-size:0.85rem;color:var(--muted);line-height:2;">
+        <div style="color:var(--white);font-weight:700;margin-bottom:0.75rem;">Full Chain Timeline:</div>
+        <span style="color:var(--red);">T+0:00</span> — Red team drops beacon.py via simulated phishing/SSH<br>
+        <span style="color:var(--red);">T+1:00</span> — Beacon starts calling home to C2 every 30s<br>
+        <span style="color:var(--amber);">T+2:00</span> — Blue team should have first network alert<br>
+        <span style="color:var(--red);">T+3:00</span> — Red team installs cron persistence<br>
+        <span style="color:var(--amber);">T+4:00</span> — Blue team should detect cron change<br>
+        <span style="color:var(--red);">T+5:00</span> — Red team drops additional payload files in /tmp<br>
+        <span style="color:var(--amber);">T+6:00</span> — Blue team FIM should alert<br>
+        <span style="color:var(--red);">T+8:00</span> — Red team begins simulated exfiltration (file POST to C2)<br>
+        <span style="color:var(--blue);">T+10:00</span> — Blue team auto-response kills process + blocks IP<br>
+        <span style="color:var(--green);">T+15:00</span> — Simulation ends — score calculated<br>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ══ SECTION 6: SETUP GUIDE ══ -->
+<div class="full-section" id="setup">
+  <div class="full-section-inner">
+    <div class="section-label">06 — IMPLEMENTATION</div>
+    <h2>Setup Guide & Code Structure</h2>
+    <p class="section-desc">Step-by-step guide to get the entire lab running. Start here if you're setting up from scratch.</p>
+
+    <div class="setup-steps">
+      <div class="setup-step">
+        <div class="setup-step-title">Install VirtualBox + Create VMs</div>
+        <div class="setup-step-desc">Create 3 VMs: Kali (attacker), Ubuntu (victim), Ubuntu (blue team monitor). Set all to Host-Only adapter on 10.0.0.0/24 network.</div>
+        <code class="setup-cmd">VBoxManage hostonlyif create<br>VBoxManage hostonlyif ipconfig vboxnet0 --ip 10.0.0.1</code>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-title">Install Dependencies</div>
+        <div class="setup-step-desc">Run on each relevant VM. Red team needs Flask + requests. Blue team needs psutil + scapy + watchdog.</div>
+        <code class="setup-cmd">pip3 install flask requests psutil scapy watchdog colorama</code>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-title">Clone / Create Project Structure</div>
+        <div class="setup-step-desc">Organize code into red_team/ and blue_team/ directories. Keep shared/ for config and logs.</div>
+        <code class="setup-cmd">mkdir -p mini_soc/{red_team,blue_team,shared/logs}</code>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-title">Start C2 Server (Red Team)</div>
+        <div class="setup-step-desc">Run on attacker VM first, then deploy beacon to victim.</div>
+        <code class="setup-cmd">cd red_team && python3 c2_server.py --port 5000</code>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-title">Start Monitoring Stack (Blue Team)</div>
+        <div class="setup-step-desc">All three monitors should run simultaneously in separate terminals.</div>
+        <code class="setup-cmd">python3 process_monitor.py &<br>python3 network_monitor.py &<br>python3 file_monitor.py &</code>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-title">Launch SOC Dashboard</div>
+        <div class="setup-step-desc">Open this HTML file in browser on the Blue Team machine, or serve it via Python HTTP server.</div>
+        <code class="setup-cmd">python3 -m http.server 8080 --directory .<br># Open http://10.0.0.40:8080/dashboard.html</code>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-title">Deploy Beacon (Red Team)</div>
+        <div class="setup-step-desc">Copy beacon to victim and execute. The simulation begins now — start the stopwatch!</div>
+        <code class="setup-cmd">scp beacon.py victim@10.0.0.20:/tmp/.beacon.py<br>ssh victim "python3 /tmp/.beacon.py &"</code>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-title">Trigger Automated Response</div>
+        <div class="setup-step-desc">Blue team auto_response.py watches for CRITICAL alerts and fires automatically. Verify it blocks the C2 IP.</div>
+        <code class="setup-cmd">python3 auto_response.py --watch alerts.log --auto-block<br># Watch: iptables -L OUTPUT | grep DROP</code>
+      </div>
+    </div>
+
+    <!-- File Structure -->
+    <div class="mt2">
+      <div class="section-label" style="margin-bottom:1rem;">PROJECT FILE STRUCTURE</div>
+      <div class="file-tree">
+<span class="ft-dir">mini_soc_lab/</span><br>
+├── <span class="ft-red">red_team/</span><br>
+│   ├── <span class="ft-red">beacon.py</span>         <span class="ft-comment"># Main beacon — POSTs to C2 every 30s</span><br>
+│   ├── <span class="ft-red">c2_server.py</span>      <span class="ft-comment"># Flask C2 — receives beacons, sends commands</span><br>
+│   ├── <span class="ft-red">persistence.py</span>    <span class="ft-comment"># Installs cron job / registry key</span><br>
+│   ├── <span class="ft-red">file_drop.py</span>      <span class="ft-comment"># Drops payload files in /tmp</span><br>
+│   └── <span class="ft-red">exfil.py</span>          <span class="ft-comment"># Simulates data exfiltration</span><br>
+│<br>
+├── <span class="ft-dir">blue_team/</span><br>
+│   ├── <span class="ft-dir">monitors/</span><br>
+│   │   ├── <span class="ft-file">process_monitor.py</span> <span class="ft-comment"># Watches running processes</span><br>
+│   │   ├── <span class="ft-file">network_monitor.py</span> <span class="ft-comment"># Sniffs network for beaconing</span><br>
+│   │   └── <span class="ft-file">file_monitor.py</span>    <span class="ft-comment"># File integrity monitoring</span><br>
+│   ├── <span class="ft-dir">response/</span><br>
+│   │   ├── <span class="ft-file">auto_kill.py</span>      <span class="ft-comment"># Kills process by PID</span><br>
+│   │   ├── <span class="ft-file">ip_block.py</span>       <span class="ft-comment"># iptables IP blocking</span><br>
+│   │   └── <span class="ft-file">remove_persist.py</span> <span class="ft-comment"># Removes cron/registry persistence</span><br>
+│   ├── <span class="ft-dir">rules/</span><br>
+│   │   └── <span class="ft-amber">detection_rules.yml</span> <span class="ft-comment"># Sigma-style detection config</span><br>
+│   ├── <span class="ft-file">auto_response.py</span>  <span class="ft-comment"># Orchestrator — watches alerts, fires responses</span><br>
+│   └── <span class="ft-file">dashboard.html</span>    <span class="ft-comment"># SOC Dashboard (this file!)</span><br>
+│<br>
+└── <span class="ft-dir">shared/</span><br>
+    ├── <span class="ft-amber">config.json</span>       <span class="ft-comment"># VM IPs, ports, thresholds</span><br>
+    └── <span class="ft-dir">logs/</span>              <span class="ft-comment"># JSON log files from all monitors</span>
+      </div>
+    </div>
+
+    <!-- Grading -->
+    <div class="mt2">
+      <div class="section-label" style="margin-bottom:1rem;">GRADING RUBRIC</div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:3px;overflow:hidden;">
+        <table class="grade-table">
+          <thead>
+            <tr><th>Category</th><th>Points</th><th>Criteria</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="grade-cat">🔴 Red Team — Beacon Works</td><td class="grade-pts">20</td><td class="grade-desc">Beacon.py successfully communicates with C2 server, data received every 30s</td></tr>
+            <tr><td class="grade-cat">🔴 Red Team — Persistence</td><td class="grade-pts">15</td><td class="grade-desc">Cron job or registry key survives process kill and reboot</td></tr>
+            <tr><td class="grade-cat">🔴 Red Team — File Manipulation</td><td class="grade-pts">10</td><td class="grade-desc">Files dropped in /tmp, data exfil demonstrated</td></tr>
+            <tr><td class="grade-cat">🔵 Blue Team — Detection Speed</td><td class="grade-pts">20</td><td class="grade-desc">Detects beacon within 5 min, persistence within 3 min, files within 4 min</td></tr>
+            <tr><td class="grade-cat">🔵 Blue Team — Auto-Response</td><td class="grade-pts">20</td><td class="grade-desc">Auto-kill, IP block, and persistence removal all trigger automatically</td></tr>
+            <tr><td class="grade-cat">🔵 Blue Team — Dashboard</td><td class="grade-pts">10</td><td class="grade-desc">SOC dashboard shows live alerts with correct severity and MITRE tags</td></tr>
+            <tr><td class="grade-cat">📄 Both — Final Reports</td><td class="grade-pts">5</td><td class="grade-desc">Red team attack report + Blue team IR report submitted</td></tr>
+          </tbody>
+        </table>
+        <div style="padding:1rem;font-family:Share Tech Mono;font-size:0.7rem;color:var(--muted);border-top:1px solid var(--border);">
+          TOTAL: 100 POINTS — BONUS: +10 if Blue team detects ALL 4 scenarios in Scenario 4 full chain
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ FOOTER ══ -->
+<footer>
+  <div>MINI SOC vs ADVERSARY LAB — REME PROJECT</div>
+  <div style="margin-top:0.4rem;">Built for <span>Red Team (2)</span> + <span>Blue Team (2)</span> · Cybersecurity Simulation · Academic Lab</div>
+  <div style="margin-top:0.4rem;color:rgba(255,255,255,0.2);">⚠ This lab is for educational purposes only. All attacks are simulated in an isolated environment.</div>
+</footer>
+
+<script>
+// ── TOGGLE PHASE ──
+function togglePhase(header) {
+  const items = header.nextElementSibling;
+  const toggle = header.querySelector('.phase-toggle');
+  if (items.style.display === 'none') {
+    items.style.display = 'block';
+    toggle.classList.remove('open');
+  } else {
+    items.style.display = 'none';
+    toggle.classList.add('open');
+  }
+}
+
+// ── TOGGLE TODO ──
+function toggleTodo(item) {
+  const cb = item.querySelector('.todo-cb');
+  const text = item.querySelector('.todo-text');
+  cb.classList.toggle('done');
+  text.classList.toggle('done');
+  updatePhaseProgress(item.closest('.todo-phase'));
+}
+
+function updatePhaseProgress(phase) {
+  const items = phase.querySelectorAll('.todo-item');
+  const done = phase.querySelectorAll('.todo-cb.done').length;
+  const total = items.length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const fill = phase.querySelector('.progress-fill');
+  const pctEl = phase.querySelector('.phase-pct');
+  if (fill) fill.style.width = pct + '%';
+  if (pctEl) pctEl.textContent = pct + '%';
+}
+
+// ── TABS ──
+function switchTab(btn, id) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+
+// ── NAV ACTIVE STATE ──
+const navLinks = document.querySelectorAll('.nav-links a');
+const sections = ['blueprint','teams','todo','live','scenarios','setup'];
+window.addEventListener('scroll', () => {
+  let current = 'blueprint';
+  for (const id of sections) {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top < 100) current = id;
+  }
+  navLinks.forEach(l => {
+    l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+  });
+});
+
+// ── LIVE LOG SIMULATION ──
+const logEvents = [
+  { sev:'info',  msg:'process_monitor.py: 91 processes tracked (baseline +4)' },
+  { sev:'info',  msg:'network_monitor.py: 847 packets captured this minute' },
+  { sev:'warn',  msg:'ANOMALY: python3 process spawned from /tmp directory' },
+  { sev:'crit',  msg:'BEACON: POST http://10.0.0.30:5000/beacon — PID 4821' },
+  { sev:'warn',  msg:'FILE: New file created /tmp/.payload.py (hidden)' },
+  { sev:'crit',  msg:'PERSISTENCE: crontab modified — new entry detected' },
+  { sev:'info',  msg:'network_monitor.py: scanning port 22 from 10.0.0.10' },
+  { sev:'ok',    msg:'RESPONSE: auto_kill.py → PID 4821 terminated ✓' },
+  { sev:'ok',    msg:'RESPONSE: iptables DROP → 10.0.0.30 blocked ✓' },
+  { sev:'warn',  msg:'FILE: /etc/hosts modified — 1 line added' },
+  { sev:'crit',  msg:'BEACON: new process python3 PID 5102 — C2 attempt' },
+  { sev:'ok',    msg:'RESPONSE: remove_persist.py → cron entry removed ✓' },
+  { sev:'info',  msg:'file_monitor.py: /tmp scanned — 3 suspicious files quarantined' },
+  { sev:'warn',  msg:'EXFIL: 45KB POST to 10.0.0.30:5000/exfil detected' },
+  { sev:'ok',    msg:'RESPONSE: ip_block.py → 10.0.0.30 already blocked ✓' },
+];
+
+let logIdx = 0;
+const logContainer = document.getElementById('liveLog');
+
+function addLogEntry() {
+  const e = logEvents[logIdx % logEvents.length];
+  logIdx++;
+  const now = new Date();
+  const t = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+
+  const sevClass = { crit:'sev-crit', warn:'sev-warn', info:'sev-info', ok:'sev-ok' }[e.sev] || 'sev-info';
+  const sevLabel = { crit:'CRIT', warn:'WARN', info:'INFO', ok:'OK' }[e.sev] || 'INFO';
+
+  div.innerHTML = `<span class="log-time">${t}</span><span class="log-sev ${sevClass}">${sevLabel}</span><span class="log-msg">${e.msg}</span>`;
+
+  logContainer.insertBefore(div, logContainer.firstChild);
+
+  // Keep max 12 entries
+  while (logContainer.children.length > 12) logContainer.removeChild(logContainer.lastChild);
+
+  // Update stats
+  if (e.sev === 'crit') {
+    const el = document.getElementById('statAlerts');
+    el.textContent = parseInt(el.textContent) + 1;
+  }
+}
+
+setInterval(addLogEntry, 3500);
+addLogEntry();
+
+// ── BEACON COUNTER ──
+setInterval(() => {
+  const el = document.getElementById('statBeacons');
+  if (el) el.textContent = parseInt(el.textContent) + 1;
+}, 8000);
+
+// ── EPS JITTER ──
+setInterval(() => {
+  const el = document.getElementById('statEPS');
+  if (el) {
+    const base = 120 + Math.floor(Math.random() * 60);
+    el.textContent = base;
+  }
+}, 4000);
+</script>
+</body>
+</html>

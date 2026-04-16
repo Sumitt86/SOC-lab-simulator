@@ -1,0 +1,16 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: mini-soc-backend
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: mini-soc-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend

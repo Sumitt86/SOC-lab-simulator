@@ -1,0 +1,13 @@
+{
+  "name": "mini-soc-lab-fullstack",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "backend:run": "cd backend && mvn spring-boot:run",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  }
+}
