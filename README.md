@@ -49,6 +49,17 @@ From project root, frontend can now be started directly:
 3. API is reachable at:
    - `http://localhost:8080/api/health`
 
+### Docker Attack Simulation
+
+The full stack runs 4 containers:
+- **frontend** — React dashboard (port 3000)
+- **backend** — Spring Boot API (port 8080), orchestrates attacks via `docker exec`
+- **victim** — Ubuntu container with monitoring agent, target of attacks
+- **attacker** — Ubuntu container with attack tools (nc, nmap), acts as C2
+
+The backend mounts the Docker socket to execute commands on victim/attacker containers.
+The monitoring agent inside the victim container detects attacks and reports events to the backend.
+
 ## Root Scripts
 
 - `npm run dev` -> runs frontend Vite dev server

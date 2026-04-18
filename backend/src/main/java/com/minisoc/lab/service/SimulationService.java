@@ -17,19 +17,17 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Core game loop orchestrator for the VM-based cyber range.
+ * Core orchestrator for the adversarial cyber range.
  *
  * This service:
  *  - Receives real system events from the Python monitoring agent
  *  - Maps events to actionable alerts via EventAlertMapper
- *  - Triggers attacks on the victim VM via AttackExecutor
- *  - Executes Blue Team actions via ActionExecutor
- *  - Manages game state (phase, scores, threat, win/loss)
+ *  - Tracks Red Team commands and scores (manual execution)
+ *  - Executes Blue Team defensive actions via ActionExecutor
+ *  - Manages game state (scores, threat level, timing)
  *
- * The game loop no longer generates fake events. Instead:
- *  - RED: AttackExecutor runs real commands on the victim
- *  - BLUE: ActionExecutor runs real defensive commands
- *  - DETECTION: Python agent posts real events via /api/events
+ * NO automated attacks — Red Team drives all offensive actions manually.
+ * NO automated win/loss — game runs until manually ended.
  */
 @Service
 public class SimulationService {
@@ -56,8 +54,10 @@ public class SimulationService {
     private volatile GameState gameState;
     private volatile int eventsPerMinute = 0;
     private volatile int blocksFired = 0;
-    private volatile boolean phaseAttackLaunched = false;
-    private int tickCount = 0;
+    private volatile int redCommandCount = 0;
+
+    // Red Team command audit trail
+    private final List<Map<String, Object>> redTeamCommandLog = Collections.synchronizedList(new ArrayList<>());
 
     public SimulationService(AttackExecutor attackExecutor,
                              ActionExecutor actionExecutor,
@@ -69,138 +69,155 @@ public class SimulationService {
         seedTodos();
     }
 
-    // ==================== GAME LOOP ====================
+    // ==================== THREAT SCORE (periodic recalculation) ====================
 
-    @Scheduled(fixedRate = 4000)
-    public void tick() {
+    @Scheduled(fixedRate = 5000)
+    public void recalculateThreatScore() {
         if (gameState.getStatus() != GameStatus.ACTIVE) return;
 
-        tickCount++;
-        eventsPerMinute = eventLog.size() * (60 / Math.max(1, (int) gameState.getElapsedSeconds()));
+        eventsPerMinute = eventLog.isEmpty() ? 0 :
+                (int) (eventLog.size() * (60.0 / Math.max(1, gameState.getElapsedSeconds())));
 
-        triggerPhaseAttackIfNeeded();
-        evaluateThreatScore();
-        checkPhaseEscalation();
-        checkWinLoss();
-    }
-
-    /**
-     * Trigger the attack for the current phase if not already launched.
-     * Attacks are real SSH commands to the victim VM.
-     */
-    private void triggerPhaseAttackIfNeeded() {
-        if (phaseAttackLaunched) return;
-
-        GameState gs = gameState;
-        AttackPhase phase = gs.getPhase();
-
-        if (phase == AttackPhase.CONTAINED) return;
-
-        // Launch the attack for this phase
-        Map<String, Object> result = attackExecutor.executePhaseAttack(phase);
-        phaseAttackLaunched = true;
-
-        boolean success = Boolean.TRUE.equals(result.get("success"));
-        if (success) {
-            pushLog("CRIT", "⚠ RED TEAM: " + phase.getDisplayName() + " attack launched on " +
-                    (attackExecutor.getVictimIp() != null ? attackExecutor.getVictimIp() : "victim"));
-            gs.addRedScore(10);
-        } else {
-            pushLog("WARN", "RED TEAM: " + phase.getDisplayName() + " attack attempted but failed — " +
-                    result.getOrDefault("reason", "unknown"));
-        }
-    }
-
-    private void evaluateThreatScore() {
-        GameState gs = gameState;
-
-        // Threat score is based on real system state:
-        // - Number of open critical alerts (from real events)
-        // - Known malicious PIDs still running
-        // - Phase level
-        // - Blocked IPs vs total C2s
         int score = 0;
         score += openCriticalCount() * 15;
         score += openAlertCount() * 5;
         score += knownMaliciousPids.size() * 10;
-        score += gs.isPersistenceActive() ? 20 : 0;
-        score += (gs.getPhase().getLevel() - 1) * 10;
+        score += gameState.isPersistenceActive() ? 20 : 0;
         score -= blockedIPs.size() * 5;
 
-        gs.setThreatScore(Math.max(0, Math.min(score, 100)));
+        gameState.setThreatScore(Math.max(0, Math.min(score, 100)));
     }
 
-    private void checkPhaseEscalation() {
-        GameState gs = gameState;
-        long phaseSeconds = gs.getPhaseElapsedSeconds();
-        int threshold = gs.getDifficulty().getEscalationThresholdSeconds();
+    // ==================== RED TEAM COMMAND EXECUTION ====================
 
-        boolean shouldEscalate = switch (gs.getPhase()) {
-            case INITIAL_ACCESS ->
-                    openCriticalCount() > 0 && phaseSeconds > threshold;
-            case PERSISTENCE ->
-                    gs.isPersistenceActive() && phaseSeconds > threshold;
-            case LATERAL_MOVEMENT ->
-                    gs.getThreatScore() > 75 || phaseSeconds > threshold * 2;
-            default -> false;
-        };
+    public Map<String, Object> executeRedTeamCommand(String container, String command) {
+        if (gameState.getStatus() != GameStatus.ACTIVE) {
+            return Map.of("success", false, "reason", "Game is not active");
+        }
 
-        if (shouldEscalate) {
-            AttackPhase nextPhase = gs.getPhase().next();
-            gs.setPhase(nextPhase);
-            gs.addRedScore(100);
-            phaseAttackLaunched = false; // allow next phase attack
-            pushLog("CRIT", "⚠ PHASE ESCALATED → " + nextPhase.getDisplayName());
+        redCommandCount++;
+        pushLog("WARN", "\ud83d\udd34 RED TEAM: executing on " + container + " \u2192 " + truncateCmd(command));
+
+        var executor = attackExecutor.getCommandExecutor();
+        CommandResult result;
+
+        boolean isAsync = command.contains("while true") || command.contains("nohup")
+                || command.contains("nc -lk") || command.contains("& disown");
+
+        if (isAsync) {
+            result = executor.executeAsync(container, command);
+        } else {
+            result = executor.execute(container, command);
+        }
+
+        int points = scoreRedCommand(command, result.success());
+        if (points > 0) {
+            gameState.addRedScore(points);
+        }
+
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("id", redCommandCount);
+        entry.put("timestamp", Instant.now().toString());
+        entry.put("container", container);
+        entry.put("command", command);
+        entry.put("success", result.success());
+        entry.put("output", result.stdout() != null ? result.stdout() : "");
+        entry.put("error", result.stderr() != null ? result.stderr() : "");
+        entry.put("points", points);
+        entry.put("durationMs", result.durationMs());
+        redTeamCommandLog.add(entry);
+
+        if (result.success()) {
+            pushLog("CRIT", "\ud83d\udd34 RED TEAM: command succeeded on " + container +
+                    (points > 0 ? " (+" + points + " pts)" : ""));
+        } else {
+            pushLog("INFO", "\ud83d\udd34 RED TEAM: command failed on " + container);
+        }
+
+        return Map.of(
+                "success", result.success(),
+                "output", result.stdout() != null ? result.stdout() : "",
+                "error", result.stderr() != null ? result.stderr() : "",
+                "points", points,
+                "durationMs", result.durationMs(),
+                "async", isAsync
+        );
+    }
+
+    public Map<String, Object> uploadMalware(String name, String payloadBase64,
+                                              String obfuscation, String targetPath) {
+        if (gameState.getStatus() != GameStatus.ACTIVE) {
+            return Map.of("success", false, "reason", "Game is not active");
+        }
+
+        String victimContainer = attackExecutor.getVictimContainer();
+        if (victimContainer == null || victimContainer.isBlank()) {
+            return Map.of("success", false, "reason", "No victim container configured");
+        }
+
+        String filePath = targetPath != null ? targetPath : "/tmp/" + name;
+
+        String writeCmd;
+        if ("base64".equalsIgnoreCase(obfuscation)) {
+            writeCmd = String.format("echo '%s' | base64 -d > %s && chmod +x %s",
+                    payloadBase64, filePath, filePath);
+        } else if ("hex".equalsIgnoreCase(obfuscation)) {
+            writeCmd = String.format("echo '%s' | xxd -r -p > %s && chmod +x %s",
+                    payloadBase64, filePath, filePath);
+        } else {
+            writeCmd = String.format("echo '%s' | base64 -d > %s && chmod +x %s",
+                    payloadBase64, filePath, filePath);
+        }
+
+        var executor = attackExecutor.getCommandExecutor();
+        CommandResult result = executor.execute(victimContainer, writeCmd);
+
+        int points = 0;
+        if (result.success()) {
+            points = 5;
+            gameState.addRedScore(points);
+            pushLog("WARN", "\ud83d\udd34 RED TEAM: malware uploaded \u2192 " + filePath +
+                    " (obfuscation: " + (obfuscation != null ? obfuscation : "none") + ")");
+        }
+
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("id", ++redCommandCount);
+        entry.put("timestamp", Instant.now().toString());
+        entry.put("container", victimContainer);
+        entry.put("command", "MALWARE_UPLOAD: " + name);
+        entry.put("success", result.success());
+        entry.put("points", points);
+        redTeamCommandLog.add(entry);
+
+        return Map.of(
+                "success", result.success(),
+                "filePath", filePath,
+                "obfuscation", obfuscation != null ? obfuscation : "none",
+                "points", points,
+                "error", result.stderr() != null ? result.stderr() : ""
+        );
+    }
+
+    public List<Map<String, Object>> getRedTeamCommandLog() {
+        synchronized (redTeamCommandLog) {
+            return List.copyOf(redTeamCommandLog);
         }
     }
 
-    private void checkWinLoss() {
-        GameState gs = gameState;
-        long elapsed = gs.getElapsedSeconds();
+    private int scoreRedCommand(String command, boolean success) {
+        if (!success) return 0;
+        String cmd = command.toLowerCase();
+        if (cmd.contains("nmap") || cmd.contains("ping") || cmd.contains("curl")) return 1;
+        if (cmd.contains("/dev/tcp/") || cmd.contains("nc -e") || cmd.contains("nc -lk")
+                || cmd.contains("while true")) return 10;
+        if (cmd.contains("crontab") || cmd.contains("systemctl") || cmd.contains(".bashrc")) return 10;
+        if (cmd.contains("ssh") && cmd.contains("scan")) return 5;
+        if (cmd.contains("exfil") || cmd.contains(".encrypted") || cmd.contains("tar") || cmd.contains("scp")) return 20;
+        return 1;
+    }
 
-        // RED WINS: reached exfiltration
-        if (gs.getPhase() == AttackPhase.EXFILTRATION) {
-            gs.setStatus(GameStatus.RED_WIN);
-            gs.setWinReason("Red Team reached Exfiltration phase — data breach!");
-            pushLog("CRIT", "🔴 GAME OVER — Red Team wins! Data exfiltration successful.");
-            return;
-        }
-
-        // RED WINS: threat overwhelmed
-        if (gs.getThreatScore() > 90) {
-            gs.setStatus(GameStatus.RED_WIN);
-            gs.setWinReason("Threat score exceeded 90 — system overwhelmed!");
-            pushLog("CRIT", "🔴 GAME OVER — Red Team wins! System overwhelmed.");
-            return;
-        }
-
-        // BLUE WINS: survived 60s + system under control
-        if (elapsed >= 60 && gs.getThreatScore() < 40
-                && openCriticalCount() == 0
-                && gs.getPhase().getLevel() <= 3) {
-            gs.setStatus(GameStatus.BLUE_WIN);
-            gs.setWinReason("System contained for 60+ seconds with low threat.");
-            pushLog("OK", "🔵 GAME OVER — Blue Team wins! Threat contained.");
-            attackExecutor.cleanup();
-            return;
-        }
-
-        // BLUE WINS: fully contained
-        if (gs.getPhase() == AttackPhase.CONTAINED) {
-            gs.setStatus(GameStatus.BLUE_WIN);
-            gs.setWinReason("All attack vectors neutralized.");
-            pushLog("OK", "🔵 GAME OVER — Blue Team wins! All threats eliminated.");
-            attackExecutor.cleanup();
-            return;
-        }
-
-        // DRAW: too long
-        if (elapsed > 180) {
-            gs.setStatus(GameStatus.DRAW);
-            gs.setWinReason("Time expired — stalemate after 180 seconds.");
-            pushLog("INFO", "⏱ GAME OVER — Draw. Time expired.");
-            attackExecutor.cleanup();
-        }
+    private String truncateCmd(String cmd) {
+        return cmd.length() > 80 ? cmd.substring(0, 80) + "..." : cmd;
     }
 
     // ==================== EVENT INGESTION (from Python Agent) ====================
@@ -489,10 +506,8 @@ public class SimulationService {
 
         gameState = new GameState();
         gameState.setDifficulty(difficulty);
-        tickCount = 0;
         eventsPerMinute = 0;
         blocksFired = 0;
-        phaseAttackLaunched = false;
         logEntries.clear();
         gameAlerts.clear();
         eventLog.clear();
@@ -500,14 +515,19 @@ public class SimulationService {
         blockedIPs.clear();
         logId.set(1);
 
-        pushLog("INFO", "🎮 Game started — Difficulty: " + difficulty.name());
-        pushLog("INFO", "cyber_range: VM-based attack simulation active");
+        redTeamCommandLog.clear();
+        redCommandCount = 0;
 
-        if (attackExecutor.getVictimIp() == null || attackExecutor.getVictimIp().isBlank()) {
-            pushLog("WARN", "⚠ No victim VM configured — set cyber-range.victim.ip in application.properties");
-            pushLog("INFO", "Running in MONITOR-ONLY mode — agent events will still be processed");
+        pushLog("INFO", "\ud83c\udfae Game started \u2014 Red vs Blue adversarial mode");
+        pushLog("INFO", "cyber_range: Docker-based attack simulation active");
+        pushLog("INFO", "\ud83d\udd34 Red Team: use /api/red-team/execute to run commands on attacker/victim");
+        pushLog("INFO", "\ud83d\udd35 Blue Team: monitor alerts, scan files, analyze behavior, respond");
+
+        if (attackExecutor.getVictimContainer() == null || attackExecutor.getVictimContainer().isBlank()) {
+            pushLog("WARN", "\u26a0 No victim container configured");
         } else {
-            pushLog("INFO", "cyber_range: target victim → " + attackExecutor.getVictimIp());
+            pushLog("INFO", "cyber_range: victim \u2192 " + attackExecutor.getVictimContainer());
+            pushLog("INFO", "cyber_range: attacker \u2192 " + attackExecutor.getAttackerContainer());
         }
     }
 
@@ -694,17 +714,342 @@ public class SimulationService {
         );
     }
 
+    // ==================== BLUE TEAM INVESTIGATION ====================
+
+    /**
+     * Get live process list from victim container.
+     */
+    public Map<String, Object> getProcessList() {
+        var executor = attackExecutor.getCommandExecutor();
+        String victim = attackExecutor.getVictimContainer();
+        if (victim == null || victim.isBlank()) {
+            return Map.of("success", false, "reason", "No victim container");
+        }
+        CommandResult result = executor.execute(victim, "ps aux --sort=-%cpu");
+        return Map.of(
+                "success", result.success(),
+                "output", result.stdout() != null ? result.stdout() : "",
+                "error", result.stderr() != null ? result.stderr() : ""
+        );
+    }
+
+    /**
+     * Get live network connections from victim container.
+     */
+    public Map<String, Object> getNetworkConnections() {
+        var executor = attackExecutor.getCommandExecutor();
+        String victim = attackExecutor.getVictimContainer();
+        if (victim == null || victim.isBlank()) {
+            return Map.of("success", false, "reason", "No victim container");
+        }
+        CommandResult result = executor.execute(victim, "ss -tulnp 2>/dev/null || netstat -tulnp 2>/dev/null");
+        return Map.of(
+                "success", result.success(),
+                "output", result.stdout() != null ? result.stdout() : "",
+                "error", result.stderr() != null ? result.stderr() : ""
+        );
+    }
+
+    /**
+     * Get files in /tmp from victim container.
+     */
+    public Map<String, Object> getFileList() {
+        var executor = attackExecutor.getCommandExecutor();
+        String victim = attackExecutor.getVictimContainer();
+        if (victim == null || victim.isBlank()) {
+            return Map.of("success", false, "reason", "No victim container");
+        }
+        CommandResult result = executor.execute(victim,
+                "find /tmp /var/tmp /dev/shm -type f -ls 2>/dev/null | head -50");
+        return Map.of(
+                "success", result.success(),
+                "output", result.stdout() != null ? result.stdout() : "",
+                "error", result.stderr() != null ? result.stderr() : ""
+        );
+    }
+
+    /**
+     * Scan a file on the victim for known malware signatures.
+     */
+    public Map<String, Object> scanFile(String filePath) {
+        var executor = attackExecutor.getCommandExecutor();
+        String victim = attackExecutor.getVictimContainer();
+        if (victim == null || victim.isBlank()) {
+            return Map.of("success", false, "reason", "No victim container");
+        }
+
+        // Safety: restrict to /tmp and /var/tmp
+        if (!filePath.startsWith("/tmp/") && !filePath.startsWith("/var/tmp/")) {
+            return Map.of("success", false, "reason", "Can only scan files under /tmp/ or /var/tmp/");
+        }
+
+        // Read file content + compute hash
+        CommandResult catResult = executor.execute(victim, "cat " + filePath + " 2>/dev/null");
+        CommandResult hashResult = executor.execute(victim, "sha256sum " + filePath + " 2>/dev/null");
+        CommandResult fileResult = executor.execute(victim, "file " + filePath + " 2>/dev/null");
+
+        if (!catResult.success()) {
+            return Map.of("success", false, "reason", "File not found or unreadable");
+        }
+
+        String content = catResult.stdout();
+        String hash = hashResult.success() ? hashResult.stdout().split("\\s+")[0] : "unknown";
+        String fileType = fileResult.success() ? fileResult.stdout() : "unknown";
+
+        // Signature-based analysis
+        List<Map<String, Object>> threats = new ArrayList<>();
+        int threatScore = 0;
+
+        // Check for known malware patterns (YARA-like string matching)
+        if (content.contains("/dev/tcp/") || content.contains("bash -i >&")) {
+            threats.add(Map.of(
+                    "type", "TROJAN",
+                    "name", "Trojan.ReverseShell.Bash",
+                    "severity", "CRITICAL",
+                    "rule", "reverse_shell_bash",
+                    "detail", "Bash reverse shell pattern detected"
+            ));
+            threatScore += 90;
+        }
+        if (content.contains("nc ") && (content.contains("-e /bin") || content.contains("-c /bin"))) {
+            threats.add(Map.of(
+                    "type", "TROJAN",
+                    "name", "Trojan.Netcat.ReverseShell",
+                    "severity", "CRITICAL",
+                    "rule", "netcat_reverse_shell",
+                    "detail", "Netcat reverse shell with -e/-c flag"
+            ));
+            threatScore += 85;
+        }
+        if (content.contains("while true") && content.contains("nc ")) {
+            threats.add(Map.of(
+                    "type", "C2_BEACON",
+                    "name", "Beacon.Loop.Generic",
+                    "severity", "HIGH",
+                    "rule", "c2_beacon_loop",
+                    "detail", "Persistent C2 beacon loop detected"
+            ));
+            threatScore += 70;
+        }
+        if (content.contains("crontab") || content.contains("*/")) {
+            threats.add(Map.of(
+                    "type", "PERSISTENCE",
+                    "name", "Persist.Cron.Generic",
+                    "severity", "HIGH",
+                    "rule", "cron_persistence",
+                    "detail", "Cron-based persistence mechanism"
+            ));
+            threatScore += 60;
+        }
+        if (content.contains(".encrypted") || content.contains("RANSOM")) {
+            threats.add(Map.of(
+                    "type", "RANSOMWARE",
+                    "name", "Ransom.FileEncrypt.Generic",
+                    "severity", "CRITICAL",
+                    "rule", "ransomware_simulation",
+                    "detail", "Ransomware-like file encryption pattern"
+            ));
+            threatScore += 95;
+        }
+        // Check for obfuscated payloads
+        if (content.contains("base64 -d") || content.contains("eval(") || content.contains("exec(")) {
+            threats.add(Map.of(
+                    "type", "OBFUSCATED",
+                    "name", "Obfuscated.Payload.Generic",
+                    "severity", "MEDIUM",
+                    "rule", "obfuscated_payload",
+                    "detail", "Obfuscated/encoded payload execution"
+            ));
+            threatScore += 40;
+        }
+
+        // High entropy check (packed/encoded content)
+        double entropy = calculateEntropy(content);
+        boolean highEntropy = entropy > 5.5;
+        if (highEntropy && threats.isEmpty()) {
+            threats.add(Map.of(
+                    "type", "PACKED",
+                    "name", "Packed.HighEntropy",
+                    "severity", "MEDIUM",
+                    "rule", "high_entropy_file",
+                    "detail", String.format("Suspiciously high entropy (%.2f) — possible packed/encoded malware", entropy)
+            ));
+            threatScore += 35;
+        }
+
+        String verdict = threats.isEmpty() ? "CLEAN" :
+                threatScore >= 70 ? "MALICIOUS" : "SUSPICIOUS";
+
+        // Score Blue Team for scanning
+        if (!threats.isEmpty()) {
+            gameState.addBlueScore(20);
+            pushLog("OK", "\ud83d\udd35 BLUE TEAM: file scan detected " + threats.size() +
+                    " threat(s) in " + filePath + " (+20 pts)");
+        } else {
+            pushLog("INFO", "\ud83d\udd35 BLUE TEAM: file scan on " + filePath + " \u2014 clean");
+        }
+
+        return Map.of(
+                "success", true,
+                "filePath", filePath,
+                "hash", hash,
+                "fileType", fileType,
+                "entropy", entropy,
+                "highEntropy", highEntropy,
+                "verdict", verdict,
+                "threatScore", Math.min(threatScore, 100),
+                "threats", threats
+        );
+    }
+
+    /**
+     * Behavioral analysis: correlate recent events to detect anomalies.
+     */
+    public Map<String, Object> behavioralAnalysis(int lastMinutes) {
+        Instant cutoff = Instant.now().minusSeconds(lastMinutes * 60L);
+
+        List<SystemEvent> recentEvents = eventLog.stream()
+                .filter(e -> e.getTimestamp().isAfter(cutoff))
+                .toList();
+
+        List<Map<String, Object>> anomalies = new ArrayList<>();
+        int combinedScore = 0;
+
+        // Pattern 1: C2 Communication (outbound connections to suspicious ports)
+        long suspiciousNetConns = recentEvents.stream()
+                .filter(e -> e.getType() == SystemEvent.EventType.NETWORK_CONNECTION)
+                .filter(e -> e.getRemotePort() != null && (e.getRemotePort() == 4444
+                        || e.getRemotePort() == 5555 || e.getRemotePort() == 9999
+                        || e.getRemotePort() == 1234 || e.getRemotePort() == 8888))
+                .count();
+        if (suspiciousNetConns > 0) {
+            anomalies.add(Map.of(
+                    "type", "C2_COMMUNICATION",
+                    "description", "Outbound connections to known C2 ports detected",
+                    "count", suspiciousNetConns,
+                    "score", 85,
+                    "rule", "C2_PORT_PATTERN"
+            ));
+            combinedScore += 85;
+        }
+
+        // Pattern 2: Rapid process spawning (potential fork bomb or spray)
+        long newProcs = recentEvents.stream()
+                .filter(e -> e.getType() == SystemEvent.EventType.PROCESS_SPAWNED)
+                .count();
+        if (newProcs > 20) {
+            anomalies.add(Map.of(
+                    "type", "RAPID_PROCESS_SPAWN",
+                    "description", "Abnormal process spawning rate: " + newProcs + " in " + lastMinutes + " min",
+                    "count", newProcs,
+                    "score", 70,
+                    "rule", "PROCESS_SPRAY_PATTERN"
+            ));
+            combinedScore += 70;
+        }
+
+        // Pattern 3: File system abuse (many new files in /tmp)
+        long newFiles = recentEvents.stream()
+                .filter(e -> e.getType() == SystemEvent.EventType.FILE_CREATED)
+                .count();
+        if (newFiles > 10) {
+            anomalies.add(Map.of(
+                    "type", "RAPID_FILE_CREATION",
+                    "description", "Rapid file creation in monitored dirs: " + newFiles + " files",
+                    "count", newFiles,
+                    "score", 55,
+                    "rule", "FILE_CREATION_BURST"
+            ));
+            combinedScore += 55;
+        }
+
+        // Pattern 4: Cron persistence
+        long cronAdds = recentEvents.stream()
+                .filter(e -> e.getType() == SystemEvent.EventType.CRON_ADDED)
+                .count();
+        if (cronAdds > 0) {
+            anomalies.add(Map.of(
+                    "type", "PERSISTENCE_INSTALLED",
+                    "description", "Cron job(s) added: " + cronAdds,
+                    "count", cronAdds,
+                    "score", 75,
+                    "rule", "CRON_PERSISTENCE_PATTERN"
+            ));
+            combinedScore += 75;
+        }
+
+        // Pattern 5: Suspicious process names
+        long suspiciousProcs = recentEvents.stream()
+                .filter(e -> e.getType() == SystemEvent.EventType.PROCESS_SPAWNED)
+                .filter(e -> {
+                    String name = e.getProcessName() != null ? e.getProcessName().toLowerCase() : "";
+                    String cmdline = e.getCmdline() != null ? e.getCmdline().toLowerCase() : "";
+                    return name.matches(".*(nc|ncat|netcat|nmap|socat|python|perl|ruby).*")
+                            || cmdline.contains("/dev/tcp") || cmdline.contains("reverse")
+                            || cmdline.contains("beacon");
+                })
+                .count();
+        if (suspiciousProcs > 0) {
+            anomalies.add(Map.of(
+                    "type", "SUSPICIOUS_PROCESSES",
+                    "description", "Known attack tool processes detected: " + suspiciousProcs,
+                    "count", suspiciousProcs,
+                    "score", 80,
+                    "rule", "ATTACK_TOOL_PATTERN"
+            ));
+            combinedScore += 80;
+        }
+
+        String recommendation;
+        if (combinedScore >= 150) recommendation = "ISOLATE_IMMEDIATELY";
+        else if (combinedScore >= 80) recommendation = "INVESTIGATE_AND_RESPOND";
+        else if (combinedScore >= 30) recommendation = "MONITOR_CLOSELY";
+        else recommendation = "NO_ACTION_NEEDED";
+
+        // Score Blue Team for analysis
+        if (!anomalies.isEmpty()) {
+            gameState.addBlueScore(15);
+            pushLog("OK", "\ud83d\udd35 BLUE TEAM: behavioral analysis found " + anomalies.size() +
+                    " anomaly patterns (+15 pts)");
+        }
+
+        return Map.of(
+                "success", true,
+                "analyzedMinutes", lastMinutes,
+                "eventCount", recentEvents.size(),
+                "anomalies", anomalies,
+                "combinedThreatScore", Math.min(combinedScore, 100),
+                "recommendation", recommendation
+        );
+    }
+
+    private double calculateEntropy(String data) {
+        if (data == null || data.isEmpty()) return 0;
+        int[] freq = new int[256];
+        for (char c : data.toCharArray()) freq[c & 0xFF]++;
+        double entropy = 0;
+        int len = data.length();
+        for (int f : freq) {
+            if (f == 0) continue;
+            double p = (double) f / len;
+            entropy -= p * (Math.log(p) / Math.log(2));
+        }
+        return entropy;
+    }
+
     private void seedTodos() {
         todos.clear();
         List<TodoItem> seed = List.of(
-                new TodoItem(1, "RED", 1, "Set up attacker and victim VMs", "HIGH", false),
-                new TodoItem(2, "RED", 2, "Implement beacon + C2 callback", "HIGH", false),
-                new TodoItem(3, "RED", 3, "Add persistence simulation", "MED", false),
-                new TodoItem(4, "RED", 4, "Simulate staged file drops", "MED", false),
-                new TodoItem(5, "BLUE", 1, "Set up monitoring agent on victim", "HIGH", false),
-                new TodoItem(6, "BLUE", 2, "Write process + network detections", "HIGH", false),
-                new TodoItem(7, "BLUE", 3, "Implement response playbooks", "HIGH", false),
-                new TodoItem(8, "BLUE", 4, "Prepare incident report output", "MED", false)
+                new TodoItem(1, "RED", 1, "Reconnaissance: scan victim ports", "HIGH", false),
+                new TodoItem(2, "RED", 2, "Initial access: establish C2 beacon", "HIGH", false),
+                new TodoItem(3, "RED", 3, "Persistence: install cron backdoor", "MED", false),
+                new TodoItem(4, "RED", 4, "Upload obfuscated malware payload", "MED", false),
+                new TodoItem(5, "RED", 5, "Exfiltrate sensitive data", "HIGH", false),
+                new TodoItem(6, "BLUE", 1, "Monitor processes for anomalies", "HIGH", false),
+                new TodoItem(7, "BLUE", 2, "Scan suspicious files (signature)", "HIGH", false),
+                new TodoItem(8, "BLUE", 3, "Run behavioral analysis", "HIGH", false),
+                new TodoItem(9, "BLUE", 4, "Kill malicious processes", "MED", false),
+                new TodoItem(10, "BLUE", 5, "Block attacker IPs + clean up", "MED", false)
         );
         seed.forEach(todo -> todos.put(todo.id(), todo));
     }

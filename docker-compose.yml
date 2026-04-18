@@ -5,6 +5,17 @@ services:
     container_name: mini-soc-backend
     ports:
       - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - CYBER_RANGE_MODE=docker
+      - VICTIM_CONTAINER=soc-victim
+      - ATTACKER_CONTAINER=soc-attacker
+    depends_on:
+      - victim
+      - attacker
+    networks:
+      - soc-network
 
   frontend:
     build:
@@ -14,3 +25,35 @@ services:
       - "3000:80"
     depends_on:
       - backend
+    networks:
+      - soc-network
+
+  victim:
+    build:
+      context: ./containers/victim
+    container_name: soc-victim
+    cap_add:
+      - NET_ADMIN
+      - SYS_PTRACE
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - MONITOR_INTERVAL=2
+    networks:
+      soc-network:
+        aliases:
+          - victim
+
+  attacker:
+    build:
+      context: ./containers/attacker
+    container_name: soc-attacker
+    cap_add:
+      - NET_ADMIN
+    networks:
+      soc-network:
+        aliases:
+          - attacker
+
+networks:
+  soc-network:
+    driver: bridge

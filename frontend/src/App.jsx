@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import ActionPanel from "./components/ActionPanel";
 import AlertsPanel from "./components/AlertsPanel";
+import BlueTeamPanel from "./components/BlueTeamPanel";
 import GameOverModal from "./components/GameOverModal";
 import LiveLog from "./components/LiveLog";
+import RedTeamPanel from "./components/RedTeamPanel";
 import StatCard from "./components/StatCard";
 import TodoBoard from "./components/TodoBoard";
 import {
   blockIP,
+  blueTeamBehavioralAnalysis,
+  blueTeamConnections,
+  blueTeamFiles,
+  blueTeamProcesses,
+  blueTeamScanFile,
   getAlerts,
   getAvailableActions,
   getLogs,
@@ -14,6 +21,9 @@ import {
   getTodos,
   isolateHost,
   killProcess,
+  redTeamExecute,
+  redTeamHistory,
+  redTeamUploadMalware,
   removeCron,
   resolveAlert,
   startGame,
@@ -42,23 +52,26 @@ export default function App() {
   const [alerts, setAlerts] = useState([]);
   const [todos, setTodos] = useState([]);
   const [actions, setActions] = useState(null);
+  const [redHistory, setRedHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   async function loadDashboard() {
     try {
-      const [summaryData, logsData, alertsData, todosData, actionsData] = await Promise.all([
+      const [summaryData, logsData, alertsData, todosData, actionsData, historyData] = await Promise.all([
         getSummary(),
         getLogs(),
         getAlerts(),
         getTodos(),
         getAvailableActions(),
+        redTeamHistory().catch(() => []),
       ]);
       setSummary(summaryData);
       setLogs(logsData);
       setAlerts(alertsData.filter((a) => a.open));
       setTodos(todosData);
       setActions(actionsData);
+      setRedHistory(historyData);
       setError("");
     } catch (err) {
       setError(err.message || "Unable to load dashboard data.");
@@ -135,6 +148,15 @@ export default function App() {
       await loadDashboard();
     } catch (err) {
       setError(err.message || "Unable to remove cron.");
+    }
+  }
+
+  async function onRedTeamExecute(container, command) {
+    try {
+      await redTeamExecute(container, command);
+      await loadDashboard();
+    } catch (err) {
+      setError(err.message || "Unable to execute command.");
     }
   }
 
@@ -241,6 +263,18 @@ export default function App() {
             </article>
           );
         })}
+      </section>
+
+      {/* Red Team + Blue Team Investigation Panels */}
+      <section className="team-panels">
+        <RedTeamPanel onExecute={onRedTeamExecute} onUploadMalware={redTeamUploadMalware} history={redHistory} />
+        <BlueTeamPanel
+          onGetProcesses={blueTeamProcesses}
+          onGetConnections={blueTeamConnections}
+          onGetFiles={blueTeamFiles}
+          onScanFile={blueTeamScanFile}
+          onBehavioralAnalysis={blueTeamBehavioralAnalysis}
+        />
       </section>
 
       {/* Blue Team Action Panel */}

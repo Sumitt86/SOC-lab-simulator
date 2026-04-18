@@ -4,6 +4,7 @@ import com.minisoc.lab.model.CommandResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -26,6 +27,7 @@ import java.util.stream.Collectors;
  *   cyber-range.kali.ip          = 192.168.56.100
  */
 @Component
+@ConditionalOnProperty(name = "cyber-range.mode", havingValue = "ssh")
 public class SshCommandExecutor implements SystemCommandExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(SshCommandExecutor.class);

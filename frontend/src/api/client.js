@@ -99,3 +99,59 @@ export async function removeCron() {
 export async function getAvailableActions() {
   return handleResponse(await fetch(`${API_BASE}/actions/available`));
 }
+
+// ==================== RED TEAM ====================
+
+export async function redTeamExecute(container, command) {
+  return handleResponse(
+    await fetch(`${API_BASE}/red-team/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ container, command })
+    })
+  );
+}
+
+export async function redTeamUploadMalware(name, payload, obfuscation = "none", targetPath = null) {
+  const body = { name, payload, obfuscation };
+  if (targetPath) body.targetPath = targetPath;
+  return handleResponse(
+    await fetch(`${API_BASE}/red-team/upload-malware`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  );
+}
+
+export async function redTeamHistory() {
+  return handleResponse(await fetch(`${API_BASE}/red-team/history`));
+}
+
+// ==================== BLUE TEAM ====================
+
+export async function blueTeamProcesses() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/processes`));
+}
+
+export async function blueTeamConnections() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/connections`));
+}
+
+export async function blueTeamFiles() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/files`));
+}
+
+export async function blueTeamScanFile(filePath) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/scan-file`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath })
+    })
+  );
+}
+
+export async function blueTeamBehavioralAnalysis(minutes = 5) {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/behavioral-analysis?minutes=${minutes}`));
+}

@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 
 /**
- * Executes Blue Team defensive actions on the victim VM via SSH.
+ * Executes Blue Team defensive actions on the victim container via docker exec.
  *
  * Each action maps to a real system command:
  *   kill-process  → kill -9 <pid>
@@ -25,8 +25,8 @@ public class ActionExecutor {
 
     private final SystemCommandExecutor commandExecutor;
 
-    @Value("${cyber-range.victim.ip:}")
-    private String victimIp;
+    @Value("${cyber-range.victim.container:soc-victim}")
+    private String victimContainer;
 
     public ActionExecutor(SystemCommandExecutor commandExecutor) {
         this.commandExecutor = commandExecutor;
@@ -38,14 +38,14 @@ public class ActionExecutor {
     public Map<String, Object> killProcess(long pid) {
         if (!hasVictim()) return noVictim();
 
-        log.info("BLUE ACTION: kill process PID {} on {}", pid, victimIp);
+        log.info("BLUE ACTION: kill process PID {} on {}", pid, victimContainer);
 
         // Verify process exists first, then kill
-        CommandResult verifyResult = commandExecutor.execute(victimIp,
+        CommandResult verifyResult = commandExecutor.execute(victimContainer,
                 "ps -p " + pid + " -o pid,comm --no-headers 2>/dev/null");
 
         if (!verifyResult.success() || verifyResult.stdout().isBlank()) {
-            log.warn("Process {} not found on {}", pid, victimIp);
+            log.warn("Process {} not found on {}", pid, victimContainer);
             return Map.of(
                     "success", false,
                     "action", "kill_process",
@@ -54,13 +54,13 @@ public class ActionExecutor {
             );
         }
 
-        CommandResult killResult = commandExecutor.execute(victimIp, "kill -9 " + pid);
+        CommandResult killResult = commandExecutor.execute(victimContainer, "kill -9 " + pid);
 
         return Map.of(
                 "success", killResult.success(),
                 "action", "kill_process",
                 "pid", pid,
-                "host", victimIp,
+                "host", victimContainer,
                 "details", killResult.success() ? "Process " + pid + " terminated" : killResult.stderr()
         );
     }
@@ -71,20 +71,20 @@ public class ActionExecutor {
     public Map<String, Object> blockIp(String ip) {
         if (!hasVictim()) return noVictim();
 
-        log.info("BLUE ACTION: block IP {} on {}", ip, victimIp);
+        log.info("BLUE ACTION: block IP {} on {}", ip, victimContainer);
 
         // Add iptables rule (both INPUT and OUTPUT)
         String command = String.format(
-                "sudo iptables -A INPUT -s %s -j DROP && sudo iptables -A OUTPUT -d %s -j DROP",
+                "iptables -A INPUT -s %s -j DROP && iptables -A OUTPUT -d %s -j DROP",
                 ip, ip
         );
-        CommandResult result = commandExecutor.execute(victimIp, command);
+        CommandResult result = commandExecutor.execute(victimContainer, command);
 
         return Map.of(
                 "success", result.success(),
                 "action", "block_ip",
                 "ip", ip,
-                "host", victimIp,
+                "host", victimContainer,
                 "details", result.success()
                         ? "IP " + ip + " blocked (INPUT + OUTPUT)"
                         : result.stderr()
@@ -97,26 +97,25 @@ public class ActionExecutor {
     public Map<String, Object> isolateHost() {
         if (!hasVictim()) return noVictim();
 
-        log.info("BLUE ACTION: isolate host {}", victimIp);
+        log.info("BLUE ACTION: isolate host {}", victimContainer);
 
-        // Kill all suspicious processes, flush iptables, block everything except SSH
+        // Kill all suspicious processes, flush iptables, block everything
+        // No need to preserve SSH in Docker — we use docker exec
         String command = "pkill -f 'while true.*beacon' 2>/dev/null; " +
                 "pkill -f '.beacon.sh' 2>/dev/null; " +
                 "pkill -f 'nc ' 2>/dev/null; " +
-                "sudo iptables -F && " +
-                "sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT && " +
-                "sudo iptables -A OUTPUT -p tcp --sport 22 -j ACCEPT && " +
-                "sudo iptables -A INPUT -j DROP && " +
-                "sudo iptables -A OUTPUT -j DROP";
+                "iptables -F && " +
+                "iptables -A INPUT -j DROP && " +
+                "iptables -A OUTPUT -j DROP";
 
-        CommandResult result = commandExecutor.execute(victimIp, command);
+        CommandResult result = commandExecutor.execute(victimContainer, command);
 
         return Map.of(
                 "success", result.success(),
                 "action", "isolate_host",
-                "host", victimIp,
+                "host", victimContainer,
                 "details", result.success()
-                        ? "Host isolated — all traffic blocked except SSH, suspicious processes killed"
+                        ? "Host isolated — all traffic blocked, suspicious processes killed"
                         : result.stderr()
         );
     }
@@ -127,16 +126,16 @@ public class ActionExecutor {
     public Map<String, Object> removeCron() {
         if (!hasVictim()) return noVictim();
 
-        log.info("BLUE ACTION: remove cron on {}", victimIp);
+        log.info("BLUE ACTION: remove cron on {}", victimContainer);
 
         // Remove all crontab entries and the beacon script
         String command = "crontab -r 2>/dev/null; rm -f /tmp/.beacon.sh 2>/dev/null; echo done";
-        CommandResult result = commandExecutor.execute(victimIp, command);
+        CommandResult result = commandExecutor.execute(victimContainer, command);
 
         return Map.of(
                 "success", result.success(),
                 "action", "remove_cron",
-                "host", victimIp,
+                "host", victimContainer,
                 "details", result.success()
                         ? "Cron jobs cleared, beacon script removed"
                         : result.stderr()
@@ -154,24 +153,24 @@ public class ActionExecutor {
             return Map.of("success", false, "reason", "Can only remove files under /tmp/");
         }
 
-        log.info("BLUE ACTION: remove file {} on {}", filePath, victimIp);
+        log.info("BLUE ACTION: remove file {} on {}", filePath, victimContainer);
 
-        CommandResult result = commandExecutor.execute(victimIp, "rm -f " + filePath);
+        CommandResult result = commandExecutor.execute(victimContainer, "rm -f " + filePath);
 
         return Map.of(
                 "success", result.success(),
                 "action", "remove_file",
                 "filePath", filePath,
-                "host", victimIp,
+                "host", victimContainer,
                 "details", result.success() ? "File removed" : result.stderr()
         );
     }
 
     private boolean hasVictim() {
-        return victimIp != null && !victimIp.isBlank();
+        return victimContainer != null && !victimContainer.isBlank();
     }
 
     private Map<String, Object> noVictim() {
-        return Map.of("success", false, "reason", "No victim IP configured (cyber-range.victim.ip)");
+        return Map.of("success", false, "reason", "No victim container configured (cyber-range.victim.container)");
     }
 }
