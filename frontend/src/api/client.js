@@ -40,12 +40,12 @@ export async function resetSimulation() {
   );
 }
 
-export async function startGame(difficulty = "MEDIUM") {
+export async function startGame(difficulty = "MEDIUM", persistSignatures = false) {
   return handleResponse(
     await fetch(`${API_BASE}/simulation/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ difficulty })
+      body: JSON.stringify({ difficulty, persistSignatures })
     })
   );
 }
@@ -154,4 +154,80 @@ export async function blueTeamScanFile(filePath) {
 
 export async function blueTeamBehavioralAnalysis(minutes = 5) {
   return handleResponse(await fetch(`${API_BASE}/blue-team/behavioral-analysis?minutes=${minutes}`));
+}
+
+// ==================== NEW: Malware Analysis ====================
+
+export async function analyzeFile(filePath) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/analyze-file`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath })
+    })
+  );
+}
+
+// ==================== NEW: Signatures ====================
+
+export async function createSignature(type, pattern, description = "") {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/signatures`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, pattern, description })
+    })
+  );
+}
+
+export async function getSignatures() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/signatures`));
+}
+
+export async function deleteSignature(id) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/signatures/${id}`, { method: "DELETE" })
+  );
+}
+
+// ==================== NEW: Honeypot ====================
+
+export async function plantHoneypot(path) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/plant-honeypot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path })
+    })
+  );
+}
+
+// ==================== NEW: Analyst Notes ====================
+
+export async function updateAlertNotes(alertId, notes) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/alerts/${alertId}/notes`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes })
+    })
+  );
+}
+
+// ==================== NEW: Red Team Streaming ====================
+
+export async function redTeamExecuteStream(container, command) {
+  return handleResponse(
+    await fetch(`${API_BASE}/red-team/execute-stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ container, command })
+    })
+  );
+}
+
+// ==================== NEW: Game Report ====================
+
+export async function getGameReport() {
+  return handleResponse(await fetch(`${API_BASE}/game/report`));
 }
