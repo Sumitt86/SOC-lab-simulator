@@ -16,28 +16,21 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Core orchestrator for the adversarial cyber range.
- *
- * This service:
- *  - Receives real system events from the Python monitoring agent
- *  - Maps events to actionable alerts via EventAlertMapper
- *  - Tracks Red Team commands and scores (manual execution)
- *  - Executes Blue Team defensive actions via ActionExecutor
- *  - Manages game state (scores, threat level, timing)
- *
- * NO automated attacks — Red Team drives all offensive actions manually.
- * NO automated win/loss — game runs until manually ended.
- */
 @Service
 public class SimulationService {
 
     private static final Logger log = LoggerFactory.getLogger(SimulationService.class);
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
+    // Escalation: if no blue action for this many seconds, auto-advance phase
+    private static final long ESCALATION_IDLE_SECONDS = 45;
+    // Draw timeout: 15 minutes
+    private static final long DRAW_TIMEOUT_SECONDS = 900;
 
     private final AttackExecutor attackExecutor;
     private final ActionExecutor actionExecutor;
     private final EventAlertMapper eventAlertMapper;
+    private final StreamingService streamingService;
+    private final SignatureService signatureService;
 
     // ===== State =====
 
@@ -46,6 +39,7 @@ public class SimulationService {
     private final Map<String, GameAlert> gameAlerts = new ConcurrentHashMap<>();
     private final List<SystemEvent> eventLog = new CopyOnWriteArrayList<>();
     private final Map<Long, TodoItem> todos = new ConcurrentHashMap<>();
+    private final List<Map<String, Object>> blueActionAuditLog = Collections.synchronizedList(new ArrayList<>());
 
     // Track which PIDs we know about from agent (for confirmation)
     private final Set<Long> knownMaliciousPids = ConcurrentHashMap.newKeySet();
@@ -61,10 +55,14 @@ public class SimulationService {
 
     public SimulationService(AttackExecutor attackExecutor,
                              ActionExecutor actionExecutor,
-                             EventAlertMapper eventAlertMapper) {
+                             EventAlertMapper eventAlertMapper,
+                             StreamingService streamingService,
+                             SignatureService signatureService) {
         this.attackExecutor = attackExecutor;
         this.actionExecutor = actionExecutor;
         this.eventAlertMapper = eventAlertMapper;
+        this.streamingService = streamingService;
+        this.signatureService = signatureService;
         gameState = new GameState();
         seedTodos();
     }
@@ -86,6 +84,96 @@ public class SimulationService {
         score -= blockedIPs.size() * 5;
 
         gameState.setThreatScore(Math.max(0, Math.min(score, 100)));
+
+        // --- Triage countdown: expire unacknowledged CRITICAL alerts ---
+        Instant now = Instant.now();
+        for (GameAlert alert : gameAlerts.values()) {
+            if (!alert.isOpen()) continue;
+            if (!"CRITICAL".equalsIgnoreCase(alert.getSeverity())) continue;
+            if (alert.getExpiresAt() != null && now.isAfter(alert.getExpiresAt())) {
+                int spike = 15;
+                gameState.setThreatScore(Math.min(100, gameState.getThreatScore() + spike));
+                pushLog("CRIT", "⏰ TRIAGE EXPIRED: [" + alert.getTitle() + "] unaddressed — threat +" + spike);
+                // Reset expiry to avoid repeated spikes
+                alert.setExpiresAt(now.plusSeconds(getTriageTimeoutSeconds()));
+                streamingService.pushAlertUpdate(alert);
+            }
+        }
+
+        // --- C2 session active bonus for Red Team (every 60s uninterrupted) ---
+        long idleBlueSeconds = (System.currentTimeMillis() - gameState.getLastBlueActionTime()) / 1000;
+        if (idleBlueSeconds > 0 && idleBlueSeconds % 60 == 0 && !knownMaliciousPids.isEmpty()) {
+            gameState.addRedScore(15);
+            pushLog("WARN", "🔴 RED TEAM: C2 session maintained 60s uninterrupted (+15 pts)");
+        }
+
+        // --- Auto-escalation: if blue has been idle during active attack ---
+        checkEscalation();
+
+        // --- Win / Draw conditions ---
+        checkWinConditions();
+    }
+
+    private void checkEscalation() {
+        if (gameState.getPhase() == AttackPhase.CONTAINED) return;
+        long idleBlueSeconds = (System.currentTimeMillis() - gameState.getLastBlueActionTime()) / 1000;
+        long escalationThreshold = gameState.getDifficulty().getEscalationThresholdSeconds();
+
+        if (!knownMaliciousPids.isEmpty() && idleBlueSeconds > escalationThreshold) {
+            AttackPhase current = gameState.getPhase();
+            if (current == AttackPhase.INITIAL_ACCESS && gameState.isPersistenceActive()) {
+                gameState.setPhase(AttackPhase.PERSISTENCE);
+                pushLog("CRIT", "📈 AUTO-ESCALATION: Persistence unchallenged → Phase advanced to PERSISTENCE");
+                streamingService.pushGameEvent("phase-changed", Map.of("phase", "PERSISTENCE"));
+            } else if (current == AttackPhase.PERSISTENCE && idleBlueSeconds > escalationThreshold * 2) {
+                gameState.setPhase(AttackPhase.LATERAL_MOVEMENT);
+                pushLog("CRIT", "📈 AUTO-ESCALATION: Lateral movement unchallenged → Phase advanced");
+                streamingService.pushGameEvent("phase-changed", Map.of("phase", "LATERAL_MOVEMENT"));
+            } else if (current == AttackPhase.LATERAL_MOVEMENT && idleBlueSeconds > escalationThreshold * 3) {
+                gameState.setPhase(AttackPhase.EXFILTRATION);
+                pushLog("CRIT", "📈 AUTO-ESCALATION: Exfiltration phase reached → RED TEAM WINNING");
+                streamingService.pushGameEvent("phase-changed", Map.of("phase", "EXFILTRATION"));
+            }
+        }
+    }
+
+    private void checkWinConditions() {
+        // Blue Win: threat cleared + no malicious processes + no persistence
+        if (gameState.getThreatScore() == 0 && knownMaliciousPids.isEmpty()
+                && !gameState.isPersistenceActive() && openCriticalCount() == 0
+                && gameState.getElapsedSeconds() > 30) {
+            gameState.setStatus(GameStatus.BLUE_WIN);
+            gameState.setWinReason("Blue Team neutralized all threats. Threat score zeroed.");
+            pushLog("OK", "🔵 BLUE TEAM WINS — all threats neutralized!");
+            streamingService.pushGameEvent("game-over", Map.of("winner", "BLUE", "reason", gameState.getWinReason()));
+            return;
+        }
+
+        // Red Win: threat >= 100 or exfiltration phase reached
+        if (gameState.getThreatScore() >= 100
+                || gameState.getPhase() == AttackPhase.EXFILTRATION) {
+            gameState.setStatus(GameStatus.RED_WIN);
+            gameState.setWinReason("Red Team reached critical threat level. System compromised.");
+            pushLog("CRIT", "🔴 RED TEAM WINS — critical threat level reached!");
+            streamingService.pushGameEvent("game-over", Map.of("winner", "RED", "reason", gameState.getWinReason()));
+            return;
+        }
+
+        // Draw: 15-minute timeout
+        if (gameState.getElapsedSeconds() > DRAW_TIMEOUT_SECONDS) {
+            gameState.setStatus(GameStatus.DRAW);
+            gameState.setWinReason("Time limit reached. Stalemate.");
+            pushLog("INFO", "⏱ DRAW — time limit reached");
+            streamingService.pushGameEvent("game-over", Map.of("winner", "DRAW", "reason", gameState.getWinReason()));
+        }
+    }
+
+    private long getTriageTimeoutSeconds() {
+        return switch (gameState.getDifficulty()) {
+            case EASY -> 120;
+            case HARD -> 30;
+            default -> 60;
+        };
     }
 
     // ==================== RED TEAM COMMAND EXECUTION ====================
@@ -262,8 +350,13 @@ public class SimulationService {
         }
 
         // Map to alert via intelligence layer
-        GameAlert alert = eventAlertMapper.map(event);
+        GameAlert alert = eventAlertMapper.map(event, gameState.getHoneypotPaths());
         if (alert != null) {
+            // Set triage countdown for CRITICAL alerts
+            if ("CRITICAL".equalsIgnoreCase(alert.getSeverity())) {
+                alert.setExpiresAt(Instant.now().plusSeconds(getTriageTimeoutSeconds()));
+            }
+
             gameAlerts.put(alert.getId(), alert);
             gameState.setThreatScore(
                     Math.min(100, gameState.getThreatScore() + alert.getThreatImpact()));
@@ -281,6 +374,9 @@ public class SimulationService {
             pushLog("CRIT", String.format("ALERT: %s — %s [%s]",
                     alert.getTitle(), alert.getDetail(),
                     alert.getMitreId()));
+
+            // Push SSE to all connected blue team clients
+            streamingService.pushAlert(alert);
 
             return Map.of(
                     "accepted", true,
@@ -323,6 +419,16 @@ public class SimulationService {
      */
     public Map<String, Object> killProcess(long pid) {
         pushLog("INFO", "blue_team: executing kill -9 " + pid);
+        gameState.touchBlueAction();
+
+        // Speed bonus: was an alert for this PID created within the last 10 seconds?
+        boolean speedBonus = gameAlerts.values().stream()
+                .filter(GameAlert::isOpen)
+                .filter(a -> {
+                    Object kp = a.getActionableFields().get("killPid");
+                    return kp != null && pid == ((Number) kp).longValue();
+                })
+                .anyMatch(a -> Instant.now().minusSeconds(10).isBefore(a.getTimestamp()));
 
         // Optimistic: mark related alerts as RESOLVING
         for (GameAlert alert : gameAlerts.values()) {
@@ -337,10 +443,13 @@ public class SimulationService {
         boolean success = Boolean.TRUE.equals(result.get("success"));
 
         if (success) {
-            gameState.addBlueScore(30);
+            int pts = speedBonus ? 40 : 30;
+            gameState.addBlueScore(pts);
             gameState.setThreatScore(Math.max(0, gameState.getThreatScore() - 10));
             blocksFired++;
-            pushLog("OK", "blue_team: kill signal sent to PID " + pid + " — awaiting agent confirmation");
+            auditBlueAction("kill-process", Map.of("pid", pid, "points", pts, "speedBonus", speedBonus));
+            pushLog("OK", "blue_team: kill signal sent to PID " + pid +
+                    (speedBonus ? " (+40 pts speed bonus)" : " (+30 pts)"));
         } else {
             // Revert optimistic update
             for (GameAlert alert : gameAlerts.values()) {
@@ -365,6 +474,7 @@ public class SimulationService {
         }
 
         pushLog("INFO", "blue_team: executing iptables block on " + ip);
+        gameState.touchBlueAction();
 
         Map<String, Object> result = actionExecutor.blockIp(ip);
         boolean success = Boolean.TRUE.equals(result.get("success"));
@@ -372,10 +482,20 @@ public class SimulationService {
         if (success) {
             blockedIPs.add(ip);
             gameState.getBlockedIPs().add(ip);
-            gameState.addBlueScore(25);
+            // Extra points if this IP was a known C2 (appeared in an alert's blockIp field)
+            boolean isKnownC2 = gameAlerts.values().stream().anyMatch(a ->
+                    ip.equals(a.getActionableFields().get("blockIp")));
+            int pts = isKnownC2 ? 35 : 25;
+            gameState.addBlueScore(pts);
             gameState.setThreatScore(Math.max(0, gameState.getThreatScore() - 15));
             blocksFired++;
-            pushLog("OK", "blue_team: IP " + ip + " blocked via iptables");
+            auditBlueAction("block-ip", Map.of("ip", ip, "points", pts, "knownC2", isKnownC2));
+            pushLog("OK", "blue_team: IP " + ip + " blocked via iptables (+" + pts + " pts)");
+
+            // Register as network IOC signature for future auto-detection
+            signatureService.createSignature(
+                    com.minisoc.lab.model.DetectionSignature.SignatureType.NETWORK_IOC, ip,
+                    "Auto-created on IP block");
 
             // Resolve related network alerts
             for (GameAlert alert : gameAlerts.values()) {
@@ -400,6 +520,7 @@ public class SimulationService {
         }
 
         pushLog("INFO", "blue_team: isolating host " + hostId);
+        gameState.touchBlueAction();
 
         Map<String, Object> result = actionExecutor.isolateHost();
         boolean success = Boolean.TRUE.equals(result.get("success"));
@@ -422,6 +543,7 @@ public class SimulationService {
             }
 
             knownMaliciousPids.clear();
+            auditBlueAction("isolate-host", Map.of("hostId", hostId, "alertsCleared", cleared, "points", 40));
             pushLog("OK", "blue_team: host " + hostId + " isolated — " + cleared + " alerts cleared");
 
             // If no active hosts remain, attack is contained
@@ -444,6 +566,7 @@ public class SimulationService {
      */
     public Map<String, Object> removeCron() {
         pushLog("INFO", "blue_team: removing cron persistence");
+        gameState.touchBlueAction();
 
         Map<String, Object> result = actionExecutor.removeCron();
         boolean success = Boolean.TRUE.equals(result.get("success"));
@@ -453,7 +576,8 @@ public class SimulationService {
             gameState.addBlueScore(20);
             gameState.setThreatScore(Math.max(0, gameState.getThreatScore() - 10));
             blocksFired++;
-            pushLog("OK", "blue_team: cron persistence removed");
+            auditBlueAction("remove-cron", Map.of("points", 20));
+            pushLog("OK", "blue_team: cron persistence removed (+20 pts)");
 
             // Resolve cron alerts
             for (GameAlert alert : gameAlerts.values()) {
@@ -500,8 +624,7 @@ public class SimulationService {
 
     // ==================== GAME CONTROL ====================
 
-    public void startGame(Difficulty difficulty) {
-        // Clean up previous game's attack artifacts
+    public void startGame(Difficulty difficulty, boolean persistSignatures) {
         attackExecutor.cleanup();
 
         gameState = new GameState();
@@ -514,25 +637,43 @@ public class SimulationService {
         knownMaliciousPids.clear();
         blockedIPs.clear();
         logId.set(1);
+        blueActionAuditLog.clear();
 
         redTeamCommandLog.clear();
         redCommandCount = 0;
+
+        if (!persistSignatures) {
+            signatureService.clearAll();
+        }
 
         pushLog("INFO", "\ud83c\udfae Game started \u2014 Red vs Blue adversarial mode");
         pushLog("INFO", "cyber_range: Docker-based attack simulation active");
         pushLog("INFO", "\ud83d\udd34 Red Team: use /api/red-team/execute to run commands on attacker/victim");
         pushLog("INFO", "\ud83d\udd35 Blue Team: monitor alerts, scan files, analyze behavior, respond");
 
-        if (attackExecutor.getVictimContainer() == null || attackExecutor.getVictimContainer().isBlank()) {
-            pushLog("WARN", "\u26a0 No victim container configured");
-        } else {
-            pushLog("INFO", "cyber_range: victim \u2192 " + attackExecutor.getVictimContainer());
+        // Plant default honeypot
+        String honeypotPath = "/tmp/.soc_honeypot_credentials.txt";
+        gameState.getHoneypotPaths().add(honeypotPath);
+        String victim = attackExecutor.getVictimContainer();
+        if (victim != null && !victim.isBlank()) {
+            var executor = attackExecutor.getCommandExecutor();
+            executor.execute(victim,
+                    "echo 'admin:P@ssw0rd123\\nroot:toor\\nbackup:backup123' > " + honeypotPath +
+                    " && chmod 644 " + honeypotPath);
+            pushLog("INFO", "\ud83c\udf6f Honeypot planted: " + honeypotPath);
+            pushLog("INFO", "cyber_range: victim \u2192 " + victim);
             pushLog("INFO", "cyber_range: attacker \u2192 " + attackExecutor.getAttackerContainer());
+        } else {
+            pushLog("WARN", "\u26a0 No victim container configured");
         }
     }
 
+    public void startGame(Difficulty difficulty) {
+        startGame(difficulty, false);
+    }
+
     public void resetSimulation() {
-        startGame(gameState.getDifficulty());
+        startGame(gameState.getDifficulty(), false);
         seedTodos();
     }
 
@@ -578,12 +719,11 @@ public class SimulationService {
 
     /**
      * Get alerts in the format the frontend expects.
-     * Maps GameAlerts to the existing AlertItem record for backward compatibility.
+     * Returns full GameAlert objects for richer frontend display.
      */
-    public List<AlertItem> getAlerts() {
+    public List<GameAlert> getAlerts() {
         return gameAlerts.values().stream()
                 .sorted((a, b) -> b.getTimestamp().compareTo(a.getTimestamp()))
-                .map(this::toAlertItem)
                 .toList();
     }
 
@@ -679,12 +819,14 @@ public class SimulationService {
     // ==================== HELPERS ====================
 
     public void pushLog(String severity, String message) {
+        LogEntry entry = new LogEntry(logId.getAndIncrement(), now(), severity, message);
         synchronized (logEntries) {
-            logEntries.add(new LogEntry(logId.getAndIncrement(), now(), severity, message));
+            logEntries.add(entry);
             if (logEntries.size() > 200) {
                 logEntries.remove(0);
             }
         }
+        streamingService.pushLog(entry);
     }
 
     private String now() {
@@ -1052,5 +1194,93 @@ public class SimulationService {
                 new TodoItem(10, "BLUE", 5, "Block attacker IPs + clean up", "MED", false)
         );
         seed.forEach(todo -> todos.put(todo.id(), todo));
+    }
+
+    // ==================== NEW: AUDIT & ADVANCED BLUE OPS ====================
+
+    private void auditBlueAction(String action, Map<String, Object> details) {
+        Map<String, Object> entry = new java.util.HashMap<>(details);
+        entry.put("action", action);
+        entry.put("timestamp", Instant.now().toString());
+        blueActionAuditLog.add(entry);
+    }
+
+    /**
+     * After blue analyzes a file, unredact alerts whose source event references that file.
+     */
+    public void unredactEventsForFile(String filePath) {
+        for (GameAlert alert : gameAlerts.values()) {
+            if (alert.isCmdlineRedacted() && filePath != null) {
+                Object fp = alert.getActionableFields().get("filePath");
+                if (filePath.equals(fp)) {
+                    alert.setCmdlineRedacted(false);
+                    streamingService.pushAlertUpdate(alert);
+                }
+            }
+        }
+    }
+
+    /**
+     * Analyst adds investigation notes to an alert.
+     */
+    public Map<String, Object> updateAlertNotes(String alertId, String notes) {
+        GameAlert alert = gameAlerts.get(alertId);
+        if (alert == null) return null;
+        alert.setAnalystNotes(notes);
+        gameState.touchBlueAction();
+        streamingService.pushAlertUpdate(alert);
+        return Map.of("success", true, "alertId", alertId);
+    }
+
+    /**
+     * Plant a honeypot file on the victim.
+     */
+    public Map<String, Object> plantHoneypot(String path) {
+        if (gameState.getHoneypotPaths().contains(path)) {
+            return Map.of("success", false, "reason", "Honeypot already exists at path");
+        }
+        var executor = attackExecutor.getCommandExecutor();
+        String victim = attackExecutor.getVictimContainer();
+        if (victim == null || victim.isBlank()) {
+            return Map.of("success", false, "reason", "No victim container");
+        }
+        // Sanitize path to prevent command injection
+        if (path.contains(";") || path.contains("&") || path.contains("|") || path.contains("`")
+                || path.contains("$") || path.contains("(")) {
+            return Map.of("success", false, "reason", "Invalid path characters");
+        }
+        executor.execute(victim,
+                "echo 'admin:P@ssw0rd123\\nroot:toor' > '" + path + "' && chmod 644 '" + path + "'");
+        gameState.getHoneypotPaths().add(path);
+        gameState.addBlueScore(10);
+        gameState.touchBlueAction();
+        auditBlueAction("plant-honeypot", Map.of("path", path, "points", 10));
+        pushLog("OK", "\ud83c\udf6f Honeypot planted: " + path + " (+10 pts)");
+        return Map.of("success", true, "path", path);
+    }
+
+    /**
+     * Build final incident report for game-over screen.
+     */
+    public IncidentReport buildIncidentReport() {
+        GameState gs = gameState;
+        Instant start = Instant.ofEpochMilli(gs.getStartTimeMillis());
+        return new IncidentReport(
+                gs.getGameId(),
+                start,
+                Instant.now(),
+                gs.getStatus().name(),
+                java.time.Duration.between(start, Instant.now()).toSeconds(),
+                gs.getDifficulty() != null ? gs.getDifficulty().name() : "MEDIUM",
+                gs.getRedScore(),
+                gs.getBlueScore(),
+                gs.getThreatScore(),
+                gs.getPhase() != null ? gs.getPhase().name() : "INITIAL_ACCESS",
+                List.copyOf(eventLog),
+                new java.util.ArrayList<>(gameAlerts.values()),
+                new java.util.ArrayList<>(signatureService.getAll()),
+                List.copyOf(blueActionAuditLog),
+                List.copyOf(redTeamCommandLog)
+        );
     }
 }

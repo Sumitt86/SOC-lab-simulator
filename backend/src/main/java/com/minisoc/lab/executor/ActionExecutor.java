@@ -73,10 +73,10 @@ public class ActionExecutor {
 
         log.info("BLUE ACTION: block IP {} on {}", ip, victimContainer);
 
-        // Add iptables rule (both INPUT and OUTPUT)
+        // Add iptables rule (both INPUT and OUTPUT) + kill processes referencing this IP
         String command = String.format(
-                "iptables -A INPUT -s %s -j DROP && iptables -A OUTPUT -d %s -j DROP",
-                ip, ip
+                "iptables -A INPUT -s %s -j DROP && iptables -A OUTPUT -d %s -j DROP && pkill -f '%s' 2>/dev/null; true",
+                ip, ip, ip
         );
         CommandResult result = commandExecutor.execute(victimContainer, command);
 
@@ -86,7 +86,7 @@ public class ActionExecutor {
                 "ip", ip,
                 "host", victimContainer,
                 "details", result.success()
-                        ? "IP " + ip + " blocked (INPUT + OUTPUT)"
+                        ? "IP " + ip + " blocked (INPUT + OUTPUT) + beacon processes killed"
                         : result.stderr()
         );
     }

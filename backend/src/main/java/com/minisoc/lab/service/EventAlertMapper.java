@@ -1,36 +1,32 @@
 package com.minisoc.lab.service;
 
+import com.minisoc.lab.model.DetectionSignature;
 import com.minisoc.lab.model.GameAlert;
 import com.minisoc.lab.model.SystemEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Translates raw SystemEvents from the monitoring agent into
- * actionable GameAlerts with MITRE ATT&CK mapping.
- *
- * This is the "intelligence layer" — not every event becomes an alert,
- * and alerts carry actionable context that Blue Team can act on.
- */
 @Component
 public class EventAlertMapper {
 
     private static final Logger log = LoggerFactory.getLogger(EventAlertMapper.class);
 
-    // Suspicious process names that should always trigger alerts
+    private final SignatureService signatureService;
+
+    public EventAlertMapper(SignatureService signatureService) {
+        this.signatureService = signatureService;
+    }
+
     private static final Pattern SUSPICIOUS_PROCESS = Pattern.compile(
             "\\b(nc|ncat|netcat|socat|nmap|python3?|perl|ruby|bash|sh|curl|wget)\\b",
             Pattern.CASE_INSENSITIVE
     );
 
-    // IP extraction pattern for cmdline analysis
     private static final Pattern IP_PATTERN = Pattern.compile(
             "(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})"
     );
@@ -38,19 +34,47 @@ public class EventAlertMapper {
     /**
      * Map a raw system event to a game alert.
      * Returns null if the event is not alertable (benign noise).
+     * @param honeypotPaths set of deployed honeypot file paths for detection
      */
-    public GameAlert map(SystemEvent event) {
+    public GameAlert map(SystemEvent event, Set<String> honeypotPaths) {
         if (event == null || event.getType() == null) return null;
 
-        return switch (event.getType()) {
+        GameAlert alert = switch (event.getType()) {
             case PROCESS_SPAWNED -> mapProcessSpawned(event);
             case NETWORK_CONNECTION -> mapNetworkConnection(event);
-            case FILE_CREATED, FILE_MODIFIED -> mapFileEvent(event);
+            case FILE_CREATED, FILE_MODIFIED -> mapFileEvent(event, honeypotPaths);
             case CRON_ADDED -> mapCronAdded(event);
-            case PROCESS_TERMINATED -> null; // confirmation, not alert
-            case CRON_REMOVED -> null; // defensive action confirmation
+            case PROCESS_TERMINATED -> null;
+            case CRON_REMOVED -> null;
             case ANOMALY_DETECTED -> mapAnomaly(event);
         };
+
+        // Check signatures against this event — upgrade to signature match if hit
+        if (alert != null) {
+            List<DetectionSignature> matches = signatureService.matchEvent(event);
+            if (!matches.isEmpty()) {
+                DetectionSignature first = matches.get(0);
+                alert = new GameAlert(
+                        alert.getId(),
+                        "CRITICAL",
+                        "Signature Match: " + first.getId(),
+                        "Matched signature '" + first.getDescription() + "' (pattern: " + first.getPattern() + ") — " + alert.getDetail(),
+                        alert.getMitreId(), alert.getMitreName(),
+                        alert.getHost(),
+                        alert.getSourceEventId(), alert.getSourceEventType(),
+                        alert.getActionableFields(), 50
+                );
+                // Signature match bypasses attribution delay
+                alert.setCmdlineRedacted(false);
+            }
+        }
+
+        return alert;
+    }
+
+    /** Backward-compatible overload */
+    public GameAlert map(SystemEvent event) {
+        return map(event, Set.of());
     }
 
     private GameAlert mapProcessSpawned(SystemEvent event) {
@@ -114,8 +138,11 @@ public class EventAlertMapper {
         if (extractedIp != null) {
             actions.put("blockIp", extractedIp);
         }
+        if (cmdline != null) {
+            actions.put("cmdline", cmdline);
+        }
 
-        return new GameAlert(
+        GameAlert alert = new GameAlert(
                 generateAlertId(),
                 severity, title, detail,
                 mitreId, mitreName,
@@ -123,6 +150,11 @@ public class EventAlertMapper {
                 event.getId(), event.getType(),
                 actions, threatImpact
         );
+
+        // Attribution delay: redact the full cmdline initially, Blue must analyze to reveal
+        alert.setCmdlineRedacted(true);
+
+        return alert;
     }
 
     private GameAlert mapNetworkConnection(SystemEvent event) {
@@ -166,9 +198,24 @@ public class EventAlertMapper {
         );
     }
 
-    private GameAlert mapFileEvent(SystemEvent event) {
+    private GameAlert mapFileEvent(SystemEvent event, Set<String> honeypotPaths) {
         String filePath = event.getFilePath();
         if (filePath == null) return null;
+
+        // Honeypot trip detection
+        if (honeypotPaths != null && honeypotPaths.contains(filePath)) {
+            return new GameAlert(
+                    generateAlertId(),
+                    "CRITICAL",
+                    "\ud83c\udf6f Honeypot Trip — Intruder Accessed Decoy",
+                    "An attacker accessed honeypot file: " + filePath,
+                    "T1083", "File and Directory Discovery",
+                    event.getHost(),
+                    event.getId(), event.getType(),
+                    Map.of("filePath", filePath, "honeypot", true),
+                    40
+            );
+        }
 
         // Only alert on suspicious file patterns
         boolean isEncrypted = filePath.endsWith(".encrypted") || filePath.endsWith(".locked");

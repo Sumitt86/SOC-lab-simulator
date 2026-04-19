@@ -37,6 +37,15 @@ public class GameAlert {
     // Threat impact — how much this adds to threat score
     private int threatImpact;
 
+    // Triage countdown deadline (null = no countdown)
+    private Instant expiresAt;
+
+    // Analyst investigation notes (freeform text)
+    private String analystNotes;
+
+    // Attribution delay: when true, cmdline is hidden until static analysis is run
+    private boolean cmdlineRedacted;
+
     public GameAlert() {
         this.timestamp = Instant.now();
         this.status = AlertStatus.OPEN;
@@ -103,6 +112,15 @@ public class GameAlert {
 
     public int getThreatImpact() { return threatImpact; }
     public void setThreatImpact(int threatImpact) { this.threatImpact = threatImpact; }
+
+    public Instant getExpiresAt() { return expiresAt; }
+    public void setExpiresAt(Instant expiresAt) { this.expiresAt = expiresAt; }
+
+    public String getAnalystNotes() { return analystNotes; }
+    public void setAnalystNotes(String analystNotes) { this.analystNotes = analystNotes; }
+
+    public boolean isCmdlineRedacted() { return cmdlineRedacted; }
+    public void setCmdlineRedacted(boolean cmdlineRedacted) { this.cmdlineRedacted = cmdlineRedacted; }
 
     public boolean isOpen() {
         return status == AlertStatus.OPEN || status == AlertStatus.FAILED;

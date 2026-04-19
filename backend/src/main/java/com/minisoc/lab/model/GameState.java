@@ -2,9 +2,11 @@ package com.minisoc.lab.model;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 
 public class GameState {
 
+    private String gameId = UUID.randomUUID().toString();
     private AttackPhase phase = AttackPhase.INITIAL_ACCESS;
     private GameStatus status = GameStatus.ACTIVE;
     private Difficulty difficulty = Difficulty.MEDIUM;
@@ -15,18 +17,21 @@ public class GameState {
     private final Set<String> activeHosts = new HashSet<>();
     private final Set<String> blockedIPs = new HashSet<>();
     private final Set<String> isolatedHosts = new HashSet<>();
+    private final Set<String> honeypotPaths = new HashSet<>();
 
     private int redScore;
     private int blueScore;
 
     private long startTimeMillis;
     private long phaseStartTimeMillis;
+    private long lastBlueActionTime;
     private String winReason = "";
 
     public GameState() {
         long now = System.currentTimeMillis();
         this.startTimeMillis = now;
         this.phaseStartTimeMillis = now;
+        this.lastBlueActionTime = now;
         this.activeHosts.add("host-001");
     }
 
@@ -81,6 +86,7 @@ public class GameState {
     public Set<String> getActiveHosts() { return activeHosts; }
     public Set<String> getBlockedIPs() { return blockedIPs; }
     public Set<String> getIsolatedHosts() { return isolatedHosts; }
+    public Set<String> getHoneypotPaths() { return honeypotPaths; }
 
     public int getRedScore() { return redScore; }
     public void setRedScore(int redScore) { this.redScore = redScore; }
@@ -92,6 +98,11 @@ public class GameState {
 
     public long getStartTimeMillis() { return startTimeMillis; }
     public void setStartTimeMillis(long startTimeMillis) { this.startTimeMillis = startTimeMillis; }
+
+    public long getLastBlueActionTime() { return lastBlueActionTime; }
+    public void touchBlueAction() { this.lastBlueActionTime = System.currentTimeMillis(); }
+
+    public String getGameId() { return gameId; }
 
     public String getWinReason() { return winReason; }
     public void setWinReason(String winReason) { this.winReason = winReason; }

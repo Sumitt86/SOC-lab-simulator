@@ -2,9 +2,12 @@ package com.minisoc.lab.controller;
 
 import com.minisoc.lab.model.*;
 import com.minisoc.lab.service.SimulationService;
+import com.minisoc.lab.service.StreamingService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.Map;
@@ -14,9 +17,12 @@ import java.util.Map;
 public class SimulationController {
 
     private final SimulationService simulationService;
+    private final StreamingService streamingService;
 
-    public SimulationController(SimulationService simulationService) {
+    public SimulationController(SimulationService simulationService,
+                                StreamingService streamingService) {
         this.simulationService = simulationService;
+        this.streamingService = streamingService;
     }
 
     // ==================== HEALTH & DASHBOARD ====================
@@ -37,7 +43,7 @@ public class SimulationController {
     }
 
     @GetMapping("/dashboard/alerts")
-    public List<AlertItem> alerts() {
+    public List<GameAlert> alerts() {
         return simulationService.getAlerts();
     }
 
@@ -66,16 +72,17 @@ public class SimulationController {
     }
 
     @PostMapping("/simulation/start")
-    public ResponseEntity<Map<String, String>> startGame(@RequestBody(required = false) Map<String, String> body) {
+    public ResponseEntity<Map<String, String>> startGame(@RequestBody(required = false) Map<String, Object> body) {
         String difficultyStr = (body != null && body.containsKey("difficulty"))
-                ? body.get("difficulty") : "MEDIUM";
+                ? body.get("difficulty").toString() : "MEDIUM";
+        boolean persistSignatures = body != null && Boolean.TRUE.equals(body.get("persistSignatures"));
         Difficulty difficulty;
         try {
             difficulty = Difficulty.valueOf(difficultyStr.toUpperCase());
         } catch (IllegalArgumentException e) {
             difficulty = Difficulty.MEDIUM;
         }
-        simulationService.startGame(difficulty);
+        simulationService.startGame(difficulty, persistSignatures);
         return ResponseEntity.ok(Map.of(
                 "message", "Game started",
                 "difficulty", difficulty.name()
@@ -145,5 +152,32 @@ public class SimulationController {
     @GetMapping("/actions/available")
     public Map<String, Object> availableActions() {
         return simulationService.getAvailableActions();
+    }
+
+    // ==================== SSE STREAMING ====================
+
+    @GetMapping(value = "/stream/alerts", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @CrossOrigin
+    public SseEmitter streamAlerts() {
+        return streamingService.subscribeAlerts();
+    }
+
+    @GetMapping(value = "/stream/logs", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @CrossOrigin
+    public SseEmitter streamLogs() {
+        return streamingService.subscribeLogs();
+    }
+
+    @GetMapping(value = "/stream/command/{commandId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @CrossOrigin
+    public SseEmitter streamCommand(@PathVariable String commandId) {
+        return streamingService.subscribeCommand(commandId);
+    }
+
+    // ==================== GAME REPORT ====================
+
+    @GetMapping("/game/report")
+    public ResponseEntity<IncidentReport> getGameReport() {
+        return ResponseEntity.ok(simulationService.buildIncidentReport());
     }
 }
