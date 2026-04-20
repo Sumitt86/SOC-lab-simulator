@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   getSummary, getAlerts, blockIP, killProcess, removeCron, isolateHost,
-  resolveAlert, plantHoneypot, updateAlertNotes,
+  resolveAlert, plantHoneypot, plantHttpHoneypot, updateAlertNotes,
 } from '../api/client';
 import { useSse } from '../hooks/useSse';
 import MalwareWorkbench from '../components/MalwareWorkbench';
+import NetworkMonitor from '../components/NetworkMonitor';
 import { useNavigate } from 'react-router-dom';
 
 function formatCountdown(expiresAt) {
@@ -22,6 +23,8 @@ export default function BlueTeamSOC() {
   const [expandedAlert, setExpandedAlert] = useState(null);
   const [notesDraft, setNotesDraft] = useState({});
   const [honeypotPath, setHoneypotPath] = useState('');
+  const [honeypotType, setHoneypotType] = useState('file');
+  const [httpEndpoint, setHttpEndpoint] = useState('/api/c2/execute');
   const [, forceUpdate] = useState(0);
 
   // SSE for real-time alerts
@@ -76,11 +79,18 @@ export default function BlueTeamSOC() {
 
   async function handlePlantHoneypot(e) {
     e.preventDefault();
-    if (!honeypotPath.trim()) return;
-    try {
-      await plantHoneypot(honeypotPath.trim());
-      setHoneypotPath('');
-    } catch {}
+    if (honeypotType === 'file') {
+      if (!honeypotPath.trim()) return;
+      try {
+        await plantHoneypot(honeypotPath.trim());
+        setHoneypotPath('');
+      } catch {}
+    } else if (honeypotType === 'http') {
+      try {
+        await plantHttpHoneypot(httpEndpoint || '/api/c2/execute');
+        setHttpEndpoint('/api/c2/execute');
+      } catch {}
+    }
   }
 
   async function handleSaveNotes(alertId) {
@@ -296,9 +306,21 @@ export default function BlueTeamSOC() {
           </div>
         </div>
 
-        {/* Center: Malware Workbench */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0.75rem' }}>
-          <MalwareWorkbench />
+        {/* Center: Malware Workbench + Network Monitor */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0.75rem', gap: '0.75rem', overflow: 'hidden' }}>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <MalwareWorkbench />
+          </div>
+          <div style={{
+            height: '320px',
+            flexShrink: 0,
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            overflow: 'hidden',
+          }}>
+            <NetworkMonitor />
+          </div>
         </div>
 
         {/* Right: Signatures + Honeypot + Quick Actions */}
@@ -330,33 +352,82 @@ export default function BlueTeamSOC() {
           {/* Honeypot */}
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: '0.3rem' }}>🍯 Plant Honeypot</div>
-            <form onSubmit={handlePlantHoneypot} style={{ display: 'flex', gap: '0.3rem' }}>
-              <input
-                value={honeypotPath}
-                onChange={e => setHoneypotPath(e.target.value)}
-                placeholder="/tmp/.secrets.txt"
+            <form onSubmit={handlePlantHoneypot} style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <select
+                value={honeypotType}
+                onChange={e => setHoneypotType(e.target.value)}
                 style={{
-                  flex: 1,
                   background: '#0a0a0a',
                   border: '1px solid var(--border)',
                   borderRadius: '4px',
                   padding: '0.3rem',
                   color: 'var(--text)',
-                  fontFamily: 'monospace',
                   fontSize: '0.7rem',
                 }}
-              />
-              <button type="submit" style={{
-                padding: '0.3rem 0.5rem',
-                background: 'rgba(43,227,138,0.15)',
-                border: '1px solid var(--green)',
-                borderRadius: '4px',
-                color: 'var(--green)',
-                cursor: 'pointer',
-                fontSize: '0.7rem',
-              }}>
-                Plant
-              </button>
+              >
+                <option value="file">📁 File Honeypot</option>
+                <option value="http">🌐 HTTP C2 Endpoint</option>
+              </select>
+
+              {honeypotType === 'file' ? (
+                <div style={{ display: 'flex', gap: '0.3rem' }}>
+                  <input
+                    value={honeypotPath}
+                    onChange={e => setHoneypotPath(e.target.value)}
+                    placeholder="/tmp/.secrets.txt"
+                    style={{
+                      flex: 1,
+                      background: '#0a0a0a',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      padding: '0.3rem',
+                      color: 'var(--text)',
+                      fontFamily: 'monospace',
+                      fontSize: '0.7rem',
+                    }}
+                  />
+                  <button type="submit" style={{
+                    padding: '0.3rem 0.5rem',
+                    background: 'rgba(43,227,138,0.15)',
+                    border: '1px solid var(--green)',
+                    borderRadius: '4px',
+                    color: 'var(--green)',
+                    cursor: 'pointer',
+                    fontSize: '0.7rem',
+                  }}>
+                    Plant
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '0.3rem' }}>
+                  <input
+                    value={httpEndpoint}
+                    onChange={e => setHttpEndpoint(e.target.value)}
+                    placeholder="/api/c2/execute"
+                    style={{
+                      flex: 1,
+                      background: '#0a0a0a',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      padding: '0.3rem',
+                      color: 'var(--text)',
+                      fontFamily: 'monospace',
+                      fontSize: '0.7rem',
+                    }}
+                  />
+                  <button type="submit" style={{
+                    padding: '0.3rem 0.5rem',
+                    background: 'rgba(43,227,138,0.15)',
+                    border: '1px solid var(--green)',
+                    borderRadius: '4px',
+                    color: 'var(--green)',
+                    cursor: 'pointer',
+                    fontSize: '0.7rem',
+                  }}>
+                    Deploy
+                  </button>
+                </div>
+              )}
             </form>
           </div>
 

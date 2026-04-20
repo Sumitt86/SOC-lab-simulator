@@ -3,6 +3,7 @@ package com.minisoc.lab.model;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class GameState {
 
@@ -18,6 +19,7 @@ public class GameState {
     private final Set<String> blockedIPs = new HashSet<>();
     private final Set<String> isolatedHosts = new HashSet<>();
     private final Set<String> honeypotPaths = new HashSet<>();
+    private final ConcurrentHashMap<String, HttpHoneypot> httpHoneypots = new ConcurrentHashMap<>();
 
     private int redScore;
     private int blueScore;
@@ -87,6 +89,7 @@ public class GameState {
     public Set<String> getBlockedIPs() { return blockedIPs; }
     public Set<String> getIsolatedHosts() { return isolatedHosts; }
     public Set<String> getHoneypotPaths() { return honeypotPaths; }
+    public ConcurrentHashMap<String, HttpHoneypot> getHttpHoneypots() { return httpHoneypots; }
 
     public int getRedScore() { return redScore; }
     public void setRedScore(int redScore) { this.redScore = redScore; }

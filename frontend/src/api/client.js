@@ -202,6 +202,16 @@ export async function plantHoneypot(path) {
   );
 }
 
+export async function plantHttpHoneypot(endpoint) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/plant-http-honeypot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: endpoint || "/api/c2/execute" })
+    })
+  );
+}
+
 // ==================== NEW: Analyst Notes ====================
 
 export async function updateAlertNotes(alertId, notes) {
@@ -222,6 +232,86 @@ export async function redTeamExecuteStream(container, command) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ container, command })
+    })
+  );
+}
+
+// ==================== Network Monitoring ====================
+
+export async function startNetworkMonitoring() {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/network/start`, { method: "POST" })
+  );
+}
+
+export async function stopNetworkMonitoring() {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/network/stop`, { method: "POST" })
+  );
+}
+
+export async function getNetworkEvents(limit = 100) {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/network/events?limit=${limit}`));
+}
+
+export async function getNetworkStats() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/network/stats`));
+}
+
+export async function networkBlockIp(ip) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/network/block`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip })
+    })
+  );
+}
+
+export async function networkRejectIp(ip) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/network/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip })
+    })
+  );
+}
+
+export async function networkTerminateConnections(ip) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/network/terminate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip })
+    })
+  );
+}
+
+export async function activeNetworkProbe() {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/network/probe`, { method: "POST" })
+  );
+}
+
+// ==================== Mock AV Engine Scan ====================
+
+export async function avScanHash(hash) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/av-scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hash })
+    })
+  );
+}
+
+export async function avScanDeploy(hash) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/av-scan/deploy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hash })
     })
   );
 }

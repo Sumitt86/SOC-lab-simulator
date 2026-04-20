@@ -202,8 +202,9 @@ public class EventAlertMapper {
         String filePath = event.getFilePath();
         if (filePath == null) return null;
 
-        // Honeypot trip detection
-        if (honeypotPaths != null && honeypotPaths.contains(filePath)) {
+        // Honeypot trip detection — only on FILE_MODIFIED (attacker access), not FILE_CREATED (Blue Team deploy)
+        if (honeypotPaths != null && honeypotPaths.contains(filePath)
+                && event.getType() == SystemEvent.EventType.FILE_MODIFIED) {
             return new GameAlert(
                     generateAlertId(),
                     "CRITICAL",

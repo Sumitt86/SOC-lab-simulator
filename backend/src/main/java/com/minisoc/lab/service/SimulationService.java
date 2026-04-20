@@ -1260,6 +1260,91 @@ public class SimulationService {
     }
 
     /**
+     * Record a hit to an HTTP honeypot endpoint.
+     * Triggers a CRITICAL alert with full forensic data.
+     */
+    public void recordHoneypotHit(String sourceIp, String command, Map<String, Object> payload) {
+        if (gameState.getStatus() != GameStatus.ACTIVE) return;
+
+        // Create honeypot hit alert
+        String alertId = "ALERT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        GameAlert alert = new GameAlert(
+                alertId,
+                "CRITICAL",
+                "🍯 Honeypot HTTP Endpoint Accessed",
+                "Attacker accessed fake C2 endpoint: " + command,
+                "T1071",  // MITRE: Application Layer Protocol
+                "Application Layer Protocol",
+                "victim-container",
+                null,
+                SystemEvent.EventType.ANOMALY_DETECTED,
+                Map.of(
+                    "blockIp", sourceIp,
+                    "command", command,
+                    "payload", payload.toString(),
+                    "endpoint", "/api/c2/execute"
+                ),
+                40  // High threat impact
+        );
+
+        alert.setExpiresAt(Instant.now().plusSeconds(getTriageTimeoutSeconds()));
+        gameAlerts.put(alertId, alert);
+        gameState.setThreatScore(
+                Math.min(100, gameState.getThreatScore() + alert.getThreatImpact())
+        );
+
+        pushLog("CRIT", String.format("🍯 HONEYPOT HIT: %s from %s — command: %s",
+                alertId, sourceIp, command));
+
+        // Audit the hit
+        Map<String, Object> auditEntry = new java.util.LinkedHashMap<>();
+        auditEntry.put("timestamp", Instant.now().toString());
+        auditEntry.put("type", "honeypot_hit");
+        auditEntry.put("sourceIp", sourceIp);
+        auditEntry.put("command", command);
+        auditEntry.put("payload", payload);
+        auditEntry.put("alertId", alertId);
+        blueActionAuditLog.add(auditEntry);
+
+        // Push alert to connected clients
+        streamingService.pushAlert(alert);
+    }
+
+    /**
+     * Plant an HTTP honeypot endpoint on the victim.
+     */
+    public Map<String, Object> plantHttpHoneypot(String endpointPath) {
+        if (gameState.getStatus() != GameStatus.ACTIVE) {
+            return Map.of("success", false, "reason", "Game is not active");
+        }
+
+        String victim = attackExecutor.getVictimContainer();
+        if (victim == null || victim.isBlank()) {
+            return Map.of("success", false, "reason", "No victim container");
+        }
+
+        // For now, the HTTP honeypot is already exposed via the HoneypotController
+        // In production, you'd spin up a separate service on the victim
+        // Here we register it in gameState
+        String baseUrl = "http://victim:8080" + endpointPath;
+        HttpHoneypot honeypot = new HttpHoneypot(endpointPath, baseUrl);
+        gameState.getHttpHoneypots().put(honeypot.getId(), honeypot);
+
+        gameState.addBlueScore(10);
+        gameState.touchBlueAction();
+        auditBlueAction("plant-http-honeypot", Map.of("endpoint", endpointPath, "points", 10));
+        pushLog("OK", "🍯 HTTP Honeypot deployed: " + baseUrl + " (+10 pts)");
+
+        return Map.of(
+                "success", true,
+                "honeypotId", honeypot.getId(),
+                "endpoint", endpointPath,
+                "baseUrl", baseUrl,
+                "message", "HTTP C2 honeypot endpoint deployed"
+        );
+    }
+
+    /**
      * Build final incident report for game-over screen.
      */
     public IncidentReport buildIncidentReport() {
