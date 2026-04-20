@@ -1,6 +1,7 @@
 package com.minisoc.lab.controller;
 
 import com.minisoc.lab.model.DetectionSignature;
+import com.minisoc.lab.service.AttackVectorService;
 import com.minisoc.lab.service.CommandStreamService;
 import com.minisoc.lab.service.SignatureService;
 import com.minisoc.lab.service.SimulationService;
@@ -20,13 +21,16 @@ public class RedTeamController {
     private final SimulationService simulationService;
     private final CommandStreamService commandStreamService;
     private final SignatureService signatureService;
+    private final AttackVectorService attackVectorService;
 
     public RedTeamController(SimulationService simulationService,
                              CommandStreamService commandStreamService,
-                             SignatureService signatureService) {
+                             SignatureService signatureService,
+                             AttackVectorService attackVectorService) {
         this.simulationService = simulationService;
         this.commandStreamService = commandStreamService;
         this.signatureService = signatureService;
+        this.attackVectorService = attackVectorService;
     }
 
     @PostMapping("/execute")
@@ -131,5 +135,75 @@ public class RedTeamController {
     @GetMapping("/history")
     public ResponseEntity<List<Map<String, Object>>> getHistory() {
         return ResponseEntity.ok(simulationService.getRedTeamCommandLog());
+    }
+
+    // ==================== Attack Vector Endpoints ====================
+
+    @GetMapping("/vectors")
+    public ResponseEntity<?> getAttackVectors() {
+        return ResponseEntity.ok(attackVectorService.getAllVectors());
+    }
+
+    @GetMapping("/vectors/{vectorId}")
+    public ResponseEntity<?> getAttackVector(@PathVariable String vectorId) {
+        var vector = attackVectorService.getVector(vectorId);
+        if (vector == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(vector);
+    }
+
+    @PostMapping("/attack/start")
+    public ResponseEntity<?> startAttack(@RequestBody Map<String, String> body) {
+        String vectorId = body.get("vectorId");
+        if (vectorId == null || vectorId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "reason", "Missing 'vectorId'"));
+        }
+        var session = attackVectorService.startSession(vectorId);
+        if (session == null) {
+            return ResponseEntity.badRequest().body(Map.of("success", false,
+                    "reason", "Unknown vector: " + vectorId));
+        }
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "sessionId", session.getSessionId(),
+                "vectorId", session.getVectorId(),
+                "startTime", session.getStartTime().toString()
+        ));
+    }
+
+    @GetMapping("/attack/{sessionId}/status")
+    public ResponseEntity<?> getAttackStatus(@PathVariable String sessionId) {
+        var session = attackVectorService.getSession(sessionId);
+        if (session == null) return ResponseEntity.notFound().build();
+        var vector = attackVectorService.getVector(session.getVectorId());
+        return ResponseEntity.ok(Map.of(
+                "sessionId", session.getSessionId(),
+                "vectorId", session.getVectorId(),
+                "vectorName", vector != null ? vector.getName() : "unknown",
+                "status", session.getStatus(),
+                "currentStage", session.getCurrentStageIndex(),
+                "totalStages", vector != null ? vector.getKillChain().size() : 0,
+                "completedStages", session.getCompletedStages(),
+                "totalScore", session.getTotalScore(),
+                "stageResults", session.getStageResults(),
+                "startTime", session.getStartTime().toString()
+        ));
+    }
+
+    @PostMapping("/attack/{sessionId}/next-step")
+    public ResponseEntity<?> executeNextStep(@PathVariable String sessionId) {
+        var result = attackVectorService.executeNextStage(sessionId);
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/attack/{sessionId}/execute/{stageId}")
+    public ResponseEntity<?> executeStage(@PathVariable String sessionId,
+                                           @PathVariable String stageId) {
+        var result = attackVectorService.executeStage(sessionId, stageId);
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/attack/sessions")
+    public ResponseEntity<?> getAllSessions() {
+        return ResponseEntity.ok(attackVectorService.getAllSessions());
     }
 }

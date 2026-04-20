@@ -2,10 +2,16 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   getSummary, getAlerts, blockIP, killProcess, removeCron, isolateHost,
   resolveAlert, plantHoneypot, plantHttpHoneypot, updateAlertNotes,
+  getDetectionAlerts, executeRemediation, getRemediationActions,
+  getCorrelatedChains,
 } from '../api/client';
 import { useSse } from '../hooks/useSse';
 import MalwareWorkbench from '../components/MalwareWorkbench';
 import NetworkMonitor from '../components/NetworkMonitor';
+import KillChainProgress from '../components/KillChainProgress';
+import MitreMapper from '../components/MitreMapper';
+import LiveLog from '../components/LiveLog';
+import ScoreDisplay from '../components/ScoreDisplay';
 import { useNavigate } from 'react-router-dom';
 
 function formatCountdown(expiresAt) {
@@ -26,6 +32,10 @@ export default function BlueTeamSOC() {
   const [honeypotType, setHoneypotType] = useState('file');
   const [httpEndpoint, setHttpEndpoint] = useState('/api/c2/execute');
   const [, forceUpdate] = useState(0);
+  const [detectionAlerts, setDetectionAlerts] = useState([]);
+  const [correlationChains, setCorrelationChains] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [remediationActions, setRemediationActions] = useState({});
 
   // SSE for real-time alerts
   const { data: sseAlerts } = useSse('/api/stream/alerts', {
@@ -39,6 +49,23 @@ export default function BlueTeamSOC() {
         }
         return [alert, ...prev];
       });
+      // Also update detection alerts
+      setDetectionAlerts(prev => {
+        const exists = prev.findIndex(a => a.id === alert.id);
+        if (exists >= 0) {
+          const updated = [...prev];
+          updated[exists] = alert;
+          return updated;
+        }
+        return [alert, ...prev];
+      });
+    }
+  });
+
+  // SSE for real-time logs
+  const { data: sseLogs } = useSse('/api/stream/logs', {
+    onMessage: (log) => {
+      setLogs(prev => [...prev.slice(-500), log]);
     }
   });
 
@@ -49,6 +76,15 @@ export default function BlueTeamSOC() {
         setSummary(await getSummary());
         const alertData = await getAlerts();
         setAlerts(alertData);
+        // Fetch detection alerts and correlations
+        try {
+          const detAlerts = await getDetectionAlerts();
+          setDetectionAlerts(detAlerts);
+        } catch {}
+        try {
+          const chains = await getCorrelatedChains();
+          setCorrelationChains(chains);
+        } catch {}
       } catch {}
     };
     load();
@@ -70,10 +106,14 @@ export default function BlueTeamSOC() {
         case 'cron': await removeCron(); break;
         case 'isolate': await isolateHost(params.hostId || 'soc-victim'); break;
         case 'resolve': await resolveAlert(params.alertId); break;
+        case 'remediate':
+          await executeRemediation(params.alertId, params.actionType, params.targetIp);
+          break;
       }
       const data = await getAlerts();
       setAlerts(data);
       setSummary(await getSummary());
+      try { setDetectionAlerts(await getDetectionAlerts()); } catch {}
     } catch {}
   }
 
@@ -150,7 +190,7 @@ export default function BlueTeamSOC() {
 
       {/* Main 3-column layout */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left: SIEM Alerts */}
+        {/* Left: Score & SIEM Alerts */}
         <div style={{
           width: '380px',
           borderRight: '1px solid var(--border)',
@@ -159,6 +199,11 @@ export default function BlueTeamSOC() {
           flexDirection: 'column',
           flexShrink: 0,
         }}>
+          {/* Score Display */}
+          <div style={{ padding: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+            <ScoreDisplay />
+          </div>
+
           <div style={{
             padding: '0.5rem 0.75rem',
             borderBottom: '1px solid var(--border)',
@@ -264,6 +309,11 @@ export default function BlueTeamSOC() {
                           <button onClick={() => handleAction('resolve', { alertId: alert.id })} style={actionBtn('var(--green)')}>
                             Resolve
                           </button>
+                          {alert.mitreId && (
+                            <button onClick={() => handleAction('remediate', { alertId: alert.id, actionType: 'block_ip' })} style={actionBtn('var(--amber)')}>
+                              Auto-Remediate
+                            </button>
+                          )}
                         </div>
 
                         {/* Analyst notes */}
@@ -306,13 +356,33 @@ export default function BlueTeamSOC() {
           </div>
         </div>
 
-        {/* Center: Malware Workbench + Network Monitor */}
+        {/* Center: Kill Chain + Live Log + Network Monitor */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0.75rem', gap: '0.75rem', overflow: 'hidden' }}>
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <MalwareWorkbench />
-          </div>
+          {/* Kill Chain Progress */}
           <div style={{
-            height: '320px',
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            flexShrink: 0,
+          }}>
+            <KillChainProgress alerts={detectionAlerts} />
+          </div>
+
+          {/* Live Timeline Log */}
+          <div style={{
+            flex: 1, minHeight: 0,
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            overflow: 'hidden',
+          }}>
+            <LiveLog logs={logs} alerts={detectionAlerts} />
+          </div>
+
+          {/* Network Monitor */}
+          <div style={{
+            height: '280px',
             flexShrink: 0,
             background: 'var(--panel)',
             border: '1px solid var(--border)',
@@ -323,15 +393,66 @@ export default function BlueTeamSOC() {
           </div>
         </div>
 
-        {/* Right: Signatures + Honeypot + Quick Actions */}
+        {/* Right: MITRE Mapper + Defenses + Honeypot */}
         <div style={{
-          width: '260px',
+          width: '300px',
           borderLeft: '1px solid var(--border)',
           background: 'rgba(15,23,48,0.4)',
           padding: '0.75rem',
           overflow: 'auto',
           flexShrink: 0,
         }}>
+          {/* MITRE Technique Mapper */}
+          <div style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            marginBottom: '0.75rem',
+            overflow: 'hidden',
+          }}>
+            <MitreMapper alerts={detectionAlerts} />
+          </div>
+
+          {/* Correlation Chains */}
+          {correlationChains.length > 0 && (
+            <div style={{ marginBottom: '0.75rem' }}>
+              <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.65rem', color: 'var(--red)', marginBottom: '0.3rem' }}>
+                ATTACK CHAINS ({correlationChains.length})
+              </div>
+              {correlationChains.map(chain => (
+                <div key={chain.chainId} style={{
+                  padding: '0.4rem',
+                  background: chain.status === 'COMPLETED' ? 'rgba(255,50,90,0.1)' :
+                    chain.status === 'BLOCKED' ? 'rgba(43,227,138,0.1)' : '#0a0a0a',
+                  border: `1px solid ${chain.status === 'COMPLETED' ? 'var(--red)' :
+                    chain.status === 'BLOCKED' ? 'var(--green)' : 'var(--border)'}`,
+                  borderRadius: '4px',
+                  marginBottom: '0.3rem',
+                  fontSize: '0.7rem',
+                }}>
+                  <div style={{ fontWeight: 600, color: chain.status === 'BLOCKED' ? 'var(--green)' : 'var(--text)' }}>
+                    {chain.name}
+                  </div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--muted)', marginTop: '0.1rem' }}>
+                    Techniques: {chain.mitreIds?.join(' → ')} | Score: {chain.score}
+                  </div>
+                  <div style={{ fontSize: '0.6rem', marginTop: '0.1rem' }}>
+                    <span style={{
+                      padding: '0.1rem 0.2rem', borderRadius: '2px',
+                      background: chain.status === 'COMPLETED' ? 'rgba(255,50,90,0.2)' :
+                        chain.status === 'BLOCKED' ? 'rgba(43,227,138,0.2)' : 'rgba(255,190,47,0.2)',
+                      color: chain.status === 'COMPLETED' ? 'var(--red)' :
+                        chain.status === 'BLOCKED' ? 'var(--green)' : 'var(--amber)',
+                      fontSize: '0.55rem', fontWeight: 600,
+                    }}>
+                      {chain.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.7rem', color: 'var(--blue)', marginBottom: '0.75rem' }}>
             DEFENSE CONTROLS
           </div>

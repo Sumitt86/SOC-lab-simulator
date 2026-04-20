@@ -321,3 +321,114 @@ export async function avScanDeploy(hash) {
 export async function getGameReport() {
   return handleResponse(await fetch(`${API_BASE}/game/report`));
 }
+
+// ==================== Remediation ====================
+
+export async function getRemediationActions(mitreId) {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/remediation/actions/${encodeURIComponent(mitreId)}`));
+}
+
+export async function executeRemediation(alertId, actionType, targetIp = null) {
+  const body = { alertId, actionType };
+  if (targetIp) body.targetIp = targetIp;
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/remediation/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  );
+}
+
+export async function getRemediationLog() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/remediation/log`));
+}
+
+export async function getRemediationStats() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/remediation/stats`));
+}
+
+// ==================== Correlation ====================
+
+export async function getCorrelatedChains() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/correlation/chains`));
+}
+
+export async function getCorrelationStats() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/correlation/stats`));
+}
+
+export async function blockCorrelationChain(chainId) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/correlation/block/${encodeURIComponent(chainId)}`, {
+      method: "POST"
+    })
+  );
+}
+
+// ==================== Detection ====================
+
+export async function getDetectionRules() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/detection/rules`));
+}
+
+export async function toggleDetectionRule(ruleId, enabled) {
+  return handleResponse(
+    await fetch(`${API_BASE}/blue-team/detection/rules/${encodeURIComponent(ruleId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled })
+    })
+  );
+}
+
+export async function getDetectionAlerts() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/detection/alerts`));
+}
+
+export async function getDetectionStats() {
+  return handleResponse(await fetch(`${API_BASE}/blue-team/detection/stats`));
+}
+
+export async function getDetectionLogs(limit = 100, source = null) {
+  let url = `${API_BASE}/blue-team/detection/logs?limit=${limit}`;
+  if (source) url += `&source=${encodeURIComponent(source)}`;
+  return handleResponse(await fetch(url));
+}
+
+// ==================== Scoring & Game State ====================
+
+export async function getCurrentScores() {
+  return handleResponse(await fetch(`${API_BASE}/score/current`));
+}
+
+export async function getScoringSummary() {
+  return handleResponse(await fetch(`${API_BASE}/score/summary`));
+}
+
+export async function getGameEvents() {
+  return handleResponse(await fetch(`${API_BASE}/score/events`));
+}
+
+export async function getGameEventsByTeam(team) {
+  return handleResponse(await fetch(`${API_BASE}/score/events/${encodeURIComponent(team)}`));
+}
+
+export async function resetScores() {
+  return handleResponse(
+    await fetch(`${API_BASE}/score/reset`, { method: "POST" })
+  );
+}
+
+export async function getScoreBreakdown() {
+  return handleResponse(await fetch(`${API_BASE}/score/breakdown`));
+}
+
+export async function getLeaderboard() {
+  return handleResponse(await fetch(`${API_BASE}/score/leaderboard`));
+}
+
+export async function getGameStatus() {
+  return handleResponse(await fetch(`${API_BASE}/game/status`));
+}
+

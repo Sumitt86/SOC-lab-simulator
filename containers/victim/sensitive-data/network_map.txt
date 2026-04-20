@@ -1,0 +1,21 @@
+CLASSIFICATION: TOP SECRET
+PROJECT: Mini-SOC Infrastructure
+
+Internal Network Map:
+- Gateway:     10.0.50.1
+- DNS Server:  10.0.50.2
+- LDAP Server: 10.0.50.10
+- DB Server:   10.0.50.20
+- Backup:      10.0.50.50
+
+SSH Keys Location: /root/.ssh/
+VPN Config:        /etc/openvpn/client.conf
+
+Admin Credentials:
+- Portal:  admin / admin123
+- SSH:     root / toor123!
+- MySQL:   root / rootpass
+
+API Tokens:
+- AWS Access Key: AKIAIOSFODNN7EXAMPLE
+- AWS Secret:     wJalrXUtnFEMI/K7MDENG/bPxRfiCY

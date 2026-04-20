@@ -1,0 +1,38 @@
+# SSH Server Configuration — INTENTIONALLY VULNERABLE
+# MITRE ATT&CK: T1110 (Brute Force), T1098 (Account Manipulation)
+
+Port 22
+ListenAddress 0.0.0.0
+
+# VULNERABLE: Allow password authentication (enables brute force)
+PasswordAuthentication yes
+
+# VULNERABLE: Allow root login
+PermitRootLogin yes
+
+# VULNERABLE: Disable strict modes (weak key file permissions accepted)
+StrictModes no
+
+# VULNERABLE: No login grace time limit
+LoginGraceTime 0
+
+# VULNERABLE: High max auth tries (allows brute force)
+MaxAuthTries 100
+
+# VULNERABLE: No rate limiting
+MaxStartups 100:30:200
+
+# Allow key-based auth (for persistence via key injection)
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+
+# Logging (for blue team detection)
+SyslogFacility AUTH
+LogLevel VERBOSE
+
+# Allow TCP forwarding (lateral movement)
+AllowTcpForwarding yes
+X11Forwarding yes
+
+# Subsystem
+Subsystem sftp /usr/lib/openssh/sftp-server

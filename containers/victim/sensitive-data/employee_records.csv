@@ -1,0 +1,12 @@
+Employee Records — CONFIDENTIAL
+
+ID    | Name              | Email                    | SSN
+------+-------------------+--------------------------+-----------------
+1001  | John Smith        | jsmith@minisoc.local     | 123-45-6789
+1002  | Jane Doe          | jdoe@minisoc.local       | 987-65-4321
+1003  | Bob Wilson        | bwilson@minisoc.local    | 456-78-9012
+1004  | Alice Johnson     | ajohnson@minisoc.local   | 789-01-2345
+
+Payroll System Access:
+- URL: https://payroll.minisoc.local
+- Admin: payroll_admin / P@yroll2024!

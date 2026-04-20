@@ -2,11 +2,14 @@ package com.minisoc.lab.controller;
 
 import com.minisoc.lab.model.AnalysisReport;
 import com.minisoc.lab.model.DetectionSignature;
+import com.minisoc.lab.service.DetectionService;
 import com.minisoc.lab.service.MalwareAnalysisService;
 import com.minisoc.lab.service.MockAvEngineService;
 import com.minisoc.lab.service.NetworkMonitorService;
 import com.minisoc.lab.service.SignatureService;
 import com.minisoc.lab.service.SimulationService;
+import com.minisoc.lab.service.RemediationService;
+import com.minisoc.lab.service.CorrelationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,17 +25,26 @@ public class BlueTeamController {
     private final SignatureService signatureService;
     private final NetworkMonitorService networkMonitorService;
     private final MockAvEngineService mockAvEngineService;
+    private final DetectionService detectionService;
+    private final RemediationService remediationService;
+    private final CorrelationService correlationService;
 
     public BlueTeamController(SimulationService simulationService,
                               MalwareAnalysisService malwareAnalysisService,
                               SignatureService signatureService,
                               NetworkMonitorService networkMonitorService,
-                              MockAvEngineService mockAvEngineService) {
+                              MockAvEngineService mockAvEngineService,
+                              DetectionService detectionService,
+                              RemediationService remediationService,
+                              CorrelationService correlationService) {
         this.simulationService = simulationService;
         this.malwareAnalysisService = malwareAnalysisService;
         this.signatureService = signatureService;
         this.networkMonitorService = networkMonitorService;
         this.mockAvEngineService = mockAvEngineService;
+        this.detectionService = detectionService;
+        this.remediationService = remediationService;
+        this.correlationService = correlationService;
     }
 
     @GetMapping("/processes")
@@ -273,5 +285,97 @@ public class BlueTeamController {
                 "points", points,
                 "verdict", scanResult.get("verdict")
         ));
+    }
+
+    // ==================== Detection Rules & Alerts ====================
+
+    @GetMapping("/detection/rules")
+    public ResponseEntity<?> getDetectionRules() {
+        return ResponseEntity.ok(detectionService.getAllRules());
+    }
+
+    @PatchMapping("/detection/rules/{ruleId}")
+    public ResponseEntity<?> toggleDetectionRule(@PathVariable String ruleId,
+                                                  @RequestBody Map<String, Object> body) {
+        Boolean enabled = (Boolean) body.get("enabled");
+        if (enabled == null) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "reason", "Missing 'enabled'"));
+        }
+        detectionService.toggleRule(ruleId, enabled);
+        return ResponseEntity.ok(Map.of("success", true, "ruleId", ruleId, "enabled", enabled));
+    }
+
+    @GetMapping("/detection/alerts")
+    public ResponseEntity<?> getDetectionAlerts() {
+        return ResponseEntity.ok(detectionService.getDetectionAlerts());
+    }
+
+    @GetMapping("/detection/stats")
+    public ResponseEntity<?> getDetectionStats() {
+        return ResponseEntity.ok(Map.of(
+                "stats", detectionService.getDetectionStats(),
+                "totalAlerts", detectionService.getDetectionAlerts().size(),
+                "rules", detectionService.getAllRules().size()
+        ));
+    }
+
+    @GetMapping("/detection/logs")
+    public ResponseEntity<?> getRawLogs(
+            @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(required = false) String source) {
+        return ResponseEntity.ok(detectionService.getRawLogs(limit, source));
+    }
+
+    // ==================== Remediation ====================
+
+    @GetMapping("/remediation/actions/{mitreId}")
+    public ResponseEntity<?> getRemediationActions(@PathVariable String mitreId) {
+        return ResponseEntity.ok(remediationService.getAvailableActions(mitreId));
+    }
+
+    @PostMapping("/remediation/execute")
+    public ResponseEntity<?> executeRemediation(@RequestBody Map<String, String> body) {
+        String alertId = body.get("alertId");
+        String actionType = body.get("actionType");
+        String targetIp = body.get("targetIp");
+
+        if (alertId == null || actionType == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false, "reason", "Missing alertId or actionType"));
+        }
+
+        RemediationService.RemediationAction action = remediationService.remediate(alertId, actionType, targetIp);
+        return ResponseEntity.ok(Map.of(
+                "success", "SUCCESS".equals(action.getStatus()),
+                "action", action
+        ));
+    }
+
+    @GetMapping("/remediation/log")
+    public ResponseEntity<?> getRemediationLog() {
+        return ResponseEntity.ok(remediationService.getActionLog());
+    }
+
+    @GetMapping("/remediation/stats")
+    public ResponseEntity<?> getRemediationStats() {
+        return ResponseEntity.ok(remediationService.getRemediationStats());
+    }
+
+    // ==================== Correlation ====================
+
+    @GetMapping("/correlation/chains")
+    public ResponseEntity<?> getCorrelatedChains() {
+        return ResponseEntity.ok(correlationService.getCorrelatedChains());
+    }
+
+    @GetMapping("/correlation/stats")
+    public ResponseEntity<?> getCorrelationStats() {
+        return ResponseEntity.ok(correlationService.getCorrelationStats());
+    }
+
+    @PostMapping("/correlation/block/{chainId}")
+    public ResponseEntity<?> blockCorrelationChain(@PathVariable String chainId) {
+        correlationService.blockChain(chainId);
+        return ResponseEntity.ok(Map.of("success", true, "chainId", chainId));
     }
 }

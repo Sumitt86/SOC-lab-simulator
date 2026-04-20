@@ -35,6 +35,14 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_PTRACE
+    ports:
+      - "8022:22"    # SSH (Vector 2: Brute Force)
+      - "8880:80"    # HTTP (Vector 1: Web App Exploitation)
+      - "8053:53/udp" # DNS (Vector 3: DNS Poisoning)
+      - "8053:53/tcp"
+      # MySQL (3306) exposed only within soc-network — no host mapping needed
+    volumes:
+      - victim-logs:/var/log    # Persist logs for blue team analysis
     environment:
       - BACKEND_URL=http://backend:8080
       - MONITOR_INTERVAL=2
@@ -42,6 +50,7 @@ services:
       soc-network:
         aliases:
           - victim
+          - victim.minisoc.local
 
   attacker:
     build:
@@ -57,3 +66,7 @@ services:
 networks:
   soc-network:
     driver: bridge
+
+volumes:
+  victim-logs:
+    driver: local

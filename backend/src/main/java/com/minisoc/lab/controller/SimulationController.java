@@ -1,6 +1,7 @@
 package com.minisoc.lab.controller;
 
 import com.minisoc.lab.model.*;
+import com.minisoc.lab.service.DetectionService;
 import com.minisoc.lab.service.SimulationService;
 import com.minisoc.lab.service.StreamingService;
 import org.springframework.http.HttpStatus;
@@ -18,11 +19,14 @@ public class SimulationController {
 
     private final SimulationService simulationService;
     private final StreamingService streamingService;
+    private final DetectionService detectionService;
 
     public SimulationController(SimulationService simulationService,
-                                StreamingService streamingService) {
+                                StreamingService streamingService,
+                                DetectionService detectionService) {
         this.simulationService = simulationService;
         this.streamingService = streamingService;
+        this.detectionService = detectionService;
     }
 
     // ==================== HEALTH & DASHBOARD ====================
@@ -95,6 +99,29 @@ public class SimulationController {
     public ResponseEntity<Map<String, Object>> ingestEvent(@RequestBody SystemEvent event) {
         Map<String, Object> result = simulationService.ingestEvent(event);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(result);
+    }
+
+    // ==================== LOG INGESTION (from victim log forwarders) ====================
+
+    @PostMapping("/logs/ingest")
+    public ResponseEntity<?> ingestLog(@RequestBody Map<String, String> body) {
+        String source = body.getOrDefault("source", "unknown");
+        String message = body.getOrDefault("message", "");
+        if (message.isBlank()) {
+            return ResponseEntity.ok(Map.of("accepted", false));
+        }
+
+        // Push raw log to SSE log stream
+        long logId = System.nanoTime();
+        LogEntry logEntry = new LogEntry(logId, java.time.Instant.now().toString(),
+                source.toUpperCase(), "[" + source + "] " + message);
+        streamingService.pushLog(logEntry);
+
+        var alerts = detectionService.processLog(source, message);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+                "accepted", true,
+                "alertsGenerated", alerts.size()
+        ));
     }
 
     @GetMapping("/events")
